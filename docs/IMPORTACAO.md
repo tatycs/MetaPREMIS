@@ -44,6 +44,40 @@ gerado de novo, sai **idêntico** e válido contra o XSD oficial.
 - **`statuteInformation` repetido:** o construtor edita um por rights; ao importar,
   o primeiro é carregado.
 
+## Importar CSV completo (documento PREMIS inteiro)
+
+Um **único CSV** com o documento PREMIS inteiro — para quem já tem os metadados em
+planilha e quer o `premis.xml` de uma vez. Em **Origem → importar arquivo**, use
+**escolher CSV completo**. Nada é enviado; a montagem e a validação rodam no navegador.
+
+**Convenções do template:**
+- **1 linha = 1 entidade.** A 1ª coluna, `entity`, diz o tipo: `object`, `event`,
+  `agent` ou `rights`.
+- **Colunas por prefixo:** `ob.` (object), `ev.` (event), `ag.` (agent), `rt.` (rights),
+  com subcampos por ponto (`ob.formatDesignation.formatName`, `ob.storage.contentLocationType`,
+  `rt.rightsGranted.act`). O app tolera variações (prefixo opcional em `xsi_type`, `storage.`,
+  `otherRightsInformation.` e `rightsGranted.` opcionais) e espaços sobrando.
+- **Repetível = repetir a coluna** (sem índice). Para dois `relationship`, repita o bloco
+  `ob.relationshipType, ob.relationshipSubType, …`; para várias `significantProperties`,
+  repita o par `Type/Value`; e assim por diante. **A ordem das colunas deve seguir a
+  hierarquia do PREMIS** — é ela que diz onde cada instância começa (cada vez que a
+  coluna-**chave** do grupo reaparece, abre-se uma nova instância).
+- **Vínculos por identificador:** `related*` e `linking*` referenciam outras entidades por
+  *IdentifierType + Value*; o app **religa automaticamente** ao criar tudo (casando por
+  identificador e, se o tipo divergir, por valor único).
+
+Importar **substitui** o modelo atual (há confirmação). Depois revise em **Modelo** e
+valide em **Saída**.
+
+**O que não é trazido (avisado no resumo):**
+- Pontos de extensão `xs:any` (ex.: `keyInformation`, `signatureInformationExtension`,
+  `eventDetailExtension`) — como no import de `premis.xml`.
+- Vínculos que apontam para uma entidade **fora do documento** (identificador sem linha
+  correspondente) — listados para você corrigir.
+
+> **Dica:** se um `object` do tipo `file` ficar sem `format`, o XSD acusa (formato é
+> obrigatório para arquivos) — complete pelo card. O importador não inventa dados.
+
 ## 2. Importar CSV/JSON (com template)
 
 Use isto para criar várias entidades de uma vez a partir de uma planilha/exportação.

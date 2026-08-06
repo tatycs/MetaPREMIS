@@ -1854,6 +1854,12 @@ function renderImport(){
     <div id="xmlImpMsg" style="margin-top:8px"></div>
   </div>
   <div class="import-zone">
+    <p style="margin:0 0 8px;font-size:12.5px"><strong>Importar CSV completo (documento PREMIS)</strong> — um único CSV com o documento inteiro. Coluna <code>entity</code> (object/event/agent/rights) por linha; colunas <code>ob./ev./ag./rt.</code> com subcampos por ponto; contêineres repetíveis = <strong>repetir a coluna</strong> (sem índice), na ordem hierárquica do PREMIS. Vira o <code>premis.xml</code> completo, com vínculos religados por identificador. Nada é enviado.</p>
+    <button class="btn" id="pickWideCsv">escolher CSV completo</button>
+    <input type="file" id="wideCsvFile" accept=".csv,.txt" style="display:none">
+    <div id="wideCsvMsg" style="margin-top:8px"></div>
+  </div>
+  <div class="import-zone">
     <p style="margin:0 0 8px;font-size:12.5px">Ou importe <strong>CSV</strong>/<strong>JSON</strong> do sistema produtor (cria entidades <em>${currentEnt}</em> com campos básicos).</p>
     <div class="btn-row" style="margin-bottom:6px">
       <button class="btn ghost" id="pickFile">escolher CSV/JSON</button>
@@ -1871,6 +1877,8 @@ function renderImport(){
   <p class="hint">Tutorial: <a href="https://github.com/tatycs/oficina-premis/blob/main/docs/IMPORTACAO.md" target="_blank" rel="noopener">como importar (docs/IMPORTACAO.md)</a>. CSV/JSON cria entidades com campos básicos; a estrutura completa é montada/editada no formulário.</p>`;
   document.getElementById('pickXml').onclick=()=>document.getElementById('xmlFile').click();
   document.getElementById('xmlFile').onchange=handlePremisXMLFile;
+  document.getElementById('pickWideCsv').onclick=()=>document.getElementById('wideCsvFile').click();
+  document.getElementById('wideCsvFile').onchange=handlePremisCSVFile;
   document.getElementById('pickFile').onclick=()=>document.getElementById('impFile').click();
   document.getElementById('impFile').onchange=handleImport;
   document.getElementById('pickFmtId').onclick=()=>document.getElementById('fmtIdFile').click();
@@ -2170,6 +2178,199 @@ function handlePremisXMLFile(ev){
       if(res.ok){
         let h=`<div class="val-item ok"><span class="ico">✓</span><span>Importado: ${res.counts.o} object(s), ${res.counts.e} event(s), ${res.counts.a} agent(s), ${res.counts.r} rights. Use os cards (botão "editar") ou as abas para alterar.</span></div>`;
         if(res.dropped&&res.dropped.length) h+=`<div class="val-item warn"><span class="ico">!</span><span>${res.dropped.length} vínculo(s)/bloco(s) não trazidos (apontam para fora do documento ou são xs:any): ${esc(res.dropped.slice(0,6).join('; '))}${res.dropped.length>6?'…':''}</span></div>`;
+        host.innerHTML=h;
+      } else if(res.cancelled){ host.innerHTML=''; }
+      else host.innerHTML=`<div class="val-item bad"><span class="ico">✕</span><span>Não foi possível importar: ${esc(res.error||'erro')}</span></div>`;
+    }
+    ev.target.value='';
+  };
+  reader.readAsText(file);
+}
+/* ===================================================================
+   Importar CSV "largo" (documento PREMIS inteiro em UM csv) — template do
+   premisBuilder. Coluna `entity` decide o tipo; colunas ob./ev./ag./rt. com
+   subcampos por ponto; contêineres repetíveis = repetir o nome da coluna (sem
+   índice), na ordem hierárquica. Vínculos (por IdentifierType+Value) são
+   religados por identificador, como no import de premis.xml. Nada é enviado.
+   =================================================================== */
+function csvToRows(text){
+  const rows=[]; let row=[], cur='', q=false;
+  text=String(text).replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  for(let i=0;i<text.length;i++){ const c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){ cur+='"'; i++; } else q=false; } else cur+=c; continue; }
+    if(c==='"'){ q=true; continue; }
+    if(c===','){ row.push(cur); cur=''; continue; }
+    if(c==='\n'){ row.push(cur); rows.push(row); row=[]; cur=''; continue; }
+    cur+=c;
+  }
+  if(cur!==''||row.length){ row.push(cur); rows.push(row); }
+  return rows;
+}
+function wideHeaderField(h){
+  h=String(h||'').trim().replace(/^(ob|ev|ag|rt)\s*\./i,'').trim();
+  if(h.indexOf('.')>=0) h=h.substring(h.lastIndexOf('.')+1);
+  return h.trim();
+}
+const WIDE_SPEC = {
+  object: {
+    scalars:{ xsi_type:1, compositionLevel:1, size:1, originalName:1 },
+    keyOf:{ objectIdentifierType:'identifiers', significantPropertiesType:'sigProps', messageDigestAlgorithm:'fixities', formatName:'formats', creatingApplicationName:'creatingApps', contentLocationType:'storages', signatureEncoding:'signatures', relationshipType:'rels', linkingEventIdentifierType:'linkEvents' },
+    members:{ objectIdentifierValue:'identifiers', significantPropertiesValue:'sigProps', messageDigest:'fixities', messageDigestOriginator:'fixities', formatVersion:'formats', formatRegistryName:'formats', formatRegistryKey:'formats', creatingApplicationVersion:'creatingApps', dateCreatedByApplication:'creatingApps', contentLocationValue:'storages', signer:'signatures', signatureMethod:'signatures', signatureValue:'signatures', signatureValidationRules:'signatures', signatureProperties:'signatures', keyInformation:'signatures', signatureInformationExtension:'signatures', relationshipSubType:'rels', relatedObjectIdentifierType:'rels', relatedObjectIdentifierValue:'rels', relatedEventIdentifierType:'rels', relatedEventIdentifierValue:'rels', linkingEventIdentifierValue:'linkEvents' }
+  },
+  event: {
+    scalars:{ eventIdentifierType:1, eventIdentifierValue:1, eventType:1, eventDateTime:1, eventDetail:1, eventDetailExtension:1, eventOutcome:1, eventOutcomeDetailNote:1, eventOutcomeDetailExtension:1 },
+    keyOf:{ linkingAgentIdentifierType:'linkAgents', linkingObjectIdentifierType:'linkObjects' },
+    members:{ linkingAgentIdentifierValue:'linkAgents', linkingAgentRole:'linkAgents', linkingObjectIdentifierValue:'linkObjects', linkingObjectIdentifierRole:'linkObjects', linkingObjectRole:'linkObjects' }
+  },
+  agent: {
+    scalars:{ agentIdentifierType:1, agentIdentifierValue:1, agentName:1, agentType:1, agentVersion:1 },
+    keyOf:{}, members:{}
+  },
+  rights: {
+    scalars:{ rightsStatementIdentifierType:1, rightsStatementIdentifierValue:1, rightsBasis:1, otherRightsBasis:1, otherRightsNote:1, act:1, restriction:1 },
+    keyOf:{ linkingObjectIdentifierType:'rLinkObjects', linkingAgentIdentifierType:'rLinkAgents' },
+    members:{ linkingObjectIdentifierValue:'rLinkObjects', linkingObjectRole:'rLinkObjects', linkingObjectIdentifierRole:'rLinkObjects', linkingAgentIdentifierValue:'rLinkAgents', linkingAgentRole:'rLinkAgents', linkingAgentIdentifierRole:'rLinkAgents' }
+  }
+};
+function collectWideRow(spec, head, cells){
+  const T=s=>String(s==null?'':s).trim();
+  const scalars={}, lists={}, cur={};
+  Object.values(spec.keyOf).forEach(into=>lists[into]=lists[into]||[]);
+  Object.values(spec.members).forEach(into=>lists[into]=lists[into]||[]);
+  const n=Math.min(cells.length, head.length);
+  for(let i=1;i<n;i++){ const f=head[i]; if(!f) continue; const v=T(cells[i]);
+    if(spec.scalars[f]){ if(v!=='') scalars[f]=v; continue; }
+    if(spec.keyOf[f]){ const into=spec.keyOf[f];
+      if(v!==''){ const inst={}; inst[f]=v; lists[into].push(inst); cur[into]=inst; } else cur[into]=null;
+      continue; }
+    const into=spec.members[f];
+    if(into){ if(v==='') continue; let inst=cur[into];
+      if(!inst){ const L=lists[into]; if(L.length){ inst=L[L.length-1]; } else { inst={}; L.push(inst); } cur[into]=inst; }
+      inst[f]=v; }
+  }
+  return {scalars, lists};
+}
+function buildWideObject(c){
+  const o=mk.object();
+  const xt=(c.scalars.xsi_type||'').replace(/^premis:/i,'').trim();
+  o.objType = ['file','representation','bitstream','intellectualEntity'].includes(xt)?xt:'file';
+  const ids=(c.lists.identifiers||[]).map(x=>({type:x.objectIdentifierType||'', value:x.objectIdentifierValue||''})).filter(x=>has(x.type)||has(x.value));
+  o.identifiers = ids.length?ids:[mk.objectIdentifier()];
+  o.significantProperties=(c.lists.sigProps||[]).map(x=>({spType:x.significantPropertiesType||'', value:x.significantPropertiesValue||'', exts:[]})).filter(s=>has(s.spType)||has(s.value));
+  const ch=o.characteristics[0];
+  if(has(c.scalars.compositionLevel)) ch.compositionLevel=c.scalars.compositionLevel;
+  if(has(c.scalars.size)) ch.size=c.scalars.size;
+  ch.fixities=(c.lists.fixities||[]).map(x=>({algo:x.messageDigestAlgorithm||'', digest:x.messageDigest||'', originator:x.messageDigestOriginator||''})).filter(f=>has(f.algo)||has(f.digest));
+  const fmts=(c.lists.formats||[]).map(x=>({name:x.formatName||'', version:x.formatVersion||'', regName:x.formatRegistryName||'', regKey:x.formatRegistryKey||'', regRole:(has(x.formatRegistryName)||has(x.formatRegistryKey))?'specification':'', notes:[]})).filter(f=>has(f.name)||has(f.regName)||has(f.regKey));
+  ch.formats = fmts.length?fmts:[mk.format()];
+  ch.creatingApps=(c.lists.creatingApps||[]).map(x=>({name:x.creatingApplicationName||'', version:x.creatingApplicationVersion||'', date:x.dateCreatedByApplication||'', exts:[]})).filter(a=>has(a.name)||has(a.version)||has(a.date));
+  o.originalName=c.scalars.originalName||'';
+  o.storages=(c.lists.storages||[]).map(x=>({locType:x.contentLocationType||'', locValue:x.contentLocationValue||'', medium:''})).filter(s=>has(s.locType)||has(s.locValue));
+  o.signatures=(c.lists.signatures||[]).map(x=>({encoding:x.signatureEncoding||'', signer:x.signer||'', method:x.signatureMethod||'', value:x.signatureValue||'', rules:x.signatureValidationRules||'', properties:x.signatureProperties||'', keyInfos:[], sigExts:[], _dropKey:x.keyInformation||'', _dropExt:x.signatureInformationExtension||''})).filter(s=>has(s.encoding)||has(s.method)||has(s.value)||has(s.rules));
+  o._rels=(c.lists.rels||[]).map(x=>({type:x.relationshipType||'', subType:x.relationshipSubType||'', ro:{type:x.relatedObjectIdentifierType||'', value:x.relatedObjectIdentifierValue||''}, re:{type:x.relatedEventIdentifierType||'', value:x.relatedEventIdentifierValue||''}})).filter(r=>has(r.type)||has(r.subType)||has(r.ro.value)||has(r.re.value));
+  o._linkEvents=(c.lists.linkEvents||[]).map(x=>({type:x.linkingEventIdentifierType||'', value:x.linkingEventIdentifierValue||''})).filter(r=>has(r.value));
+  return o;
+}
+function buildWideEvent(c){
+  const e=mk.event();
+  e.idType=c.scalars.eventIdentifierType||''; e.idValue=c.scalars.eventIdentifierValue||'';
+  e.eventType=c.scalars.eventType||''; e.dateTime=c.scalars.eventDateTime||'';
+  if(has(c.scalars.eventDetail)) e.details=[{detail:c.scalars.eventDetail, exts:[]}];
+  if(has(c.scalars.eventOutcome)||has(c.scalars.eventOutcomeDetailNote)) e.outcomes=[{outcome:c.scalars.eventOutcome||'', detailNote:c.scalars.eventOutcomeDetailNote||'', exts:[]}];
+  e._linkAgents=(c.lists.linkAgents||[]).map(x=>({type:x.linkingAgentIdentifierType||'', value:x.linkingAgentIdentifierValue||'', role:x.linkingAgentRole||''})).filter(r=>has(r.value));
+  e._linkObjects=(c.lists.linkObjects||[]).map(x=>({type:x.linkingObjectIdentifierType||'', value:x.linkingObjectIdentifierValue||'', role:(x.linkingObjectIdentifierRole||x.linkingObjectRole||'')})).filter(r=>has(r.value));
+  return e;
+}
+function buildWideAgent(c){
+  const a=mk.agent();
+  a.identifiers=[{type:c.scalars.agentIdentifierType||'', value:c.scalars.agentIdentifierValue||''}];
+  if(has(c.scalars.agentName)) a.names=[{value:c.scalars.agentName}];
+  a.agentType=c.scalars.agentType||''; if(has(c.scalars.agentVersion)) a.agentVersion=c.scalars.agentVersion;
+  return a;
+}
+function buildWideRight(c){
+  const r=mk.right();
+  r.idType=c.scalars.rightsStatementIdentifierType||''; r.idValue=c.scalars.rightsStatementIdentifierValue||'';
+  let basis=(c.scalars.rightsBasis||'other').trim().toLowerCase();
+  if(!['copyright','license','statute','other'].includes(basis)) basis='other';
+  r.basis=basis;
+  if(basis==='other'){ r.o_basis=c.scalars.otherRightsBasis||''; if(has(c.scalars.otherRightsNote)) r.o_notes=[{value:c.scalars.otherRightsNote}]; }
+  if(has(c.scalars.act)){ const g=mk.granted(); g.act=c.scalars.act; if(has(c.scalars.restriction)) g.restrictions=[{value:c.scalars.restriction}]; r.granted=[g]; }
+  r._linkObjects=(c.lists.rLinkObjects||[]).map(x=>({type:x.linkingObjectIdentifierType||'', value:x.linkingObjectIdentifierValue||''})).filter(x=>has(x.value));
+  r._linkAgents=(c.lists.rLinkAgents||[]).map(x=>({type:x.linkingAgentIdentifierType||'', value:x.linkingAgentIdentifierValue||''})).filter(x=>has(x.value));
+  return r;
+}
+function wideResolver(list, keyFn){
+  const T=s=>String(s==null?'':s).trim();
+  const byTV=new Map(), byV=new Map();
+  list.forEach(it=>{ const k=keyFn(it); byTV.set(T(k.t)+'|'+T(k.v), it); const vv=T(k.v); if(vv){ if(!byV.has(vv)) byV.set(vv,[]); byV.get(vv).push(it); } });
+  return (t,v)=>{ const a=byTV.get(T(t)+'|'+T(v)); if(a) return a; const l=byV.get(T(v)); return (l&&l.length===1)?l[0]:null; };
+}
+function parsePremisWideCSV(text){
+  const rows=csvToRows(text).filter(r=>r.some(c=>String(c).trim()!==''));
+  if(rows.length<2) return {ok:false,error:'CSV vazio ou só com cabeçalho.'};
+  if(String(rows[0][0]||'').trim().toLowerCase()!=='entity') return {ok:false,error:'A 1ª coluna deve ser "entity" (object/event/agent/rights).'};
+  const head=rows[0].map(wideHeaderField);
+  const objects=[],events=[],agents=[],rights=[]; const dropped=[];
+  for(let ri=1;ri<rows.length;ri++){
+    const cells=rows[ri]; const ent=String(cells[0]||'').trim().toLowerCase();
+    if(!ent) continue;
+    const spec=WIDE_SPEC[ent];
+    if(!spec){ dropped.push(`linha ${ri+1}: entity desconhecida "${ent}"`); continue; }
+    const c=collectWideRow(spec, head, cells);
+    if(ent==='object') objects.push(buildWideObject(c));
+    else if(ent==='event') events.push(buildWideEvent(c));
+    else if(ent==='agent') agents.push(buildWideAgent(c));
+    else rights.push(buildWideRight(c));
+  }
+  const objRes=wideResolver(objects, o=>{ const id=o.identifiers[0]||{}; return {t:id.type,v:id.value}; });
+  const evtRes=wideResolver(events, e=>({t:e.idType,v:e.idValue}));
+  const agtRes=wideResolver(agents, a=>{ const id=a.identifiers[0]||{}; return {t:id.type,v:id.value}; });
+  const label=o=>((o.identifiers&&o.identifiers[0])||{}).value||o.lid;
+  objects.forEach(o=>{
+    o.relationships=(o._rels||[]).map(rr=>{
+      const rel={type:rr.type,subType:rr.subType,relObjects:[],relEvents:[],relObjSeq:{},relEvtSeq:{},relEnvPurpose:[],relEnvChar:''};
+      if(has(rr.ro.value)){ const t=objRes(rr.ro.type,rr.ro.value); if(t) rel.relObjects.push(t.lid); else dropped.push(`relatedObject de ${label(o)} → ${rr.ro.type||''}/${rr.ro.value}`); }
+      if(has(rr.re.value)){ const t=evtRes(rr.re.type,rr.re.value); if(t) rel.relEvents.push(t.lid); else dropped.push(`relatedEvent de ${label(o)} → ${rr.re.type||''}/${rr.re.value}`); }
+      return rel;
+    });
+    o.linkEvents=(o._linkEvents||[]).map(rf=>{ const t=evtRes(rf.type,rf.value); if(t) return t.lid; dropped.push(`linkingEvent de ${label(o)} → ${rf.type||''}/${rf.value}`); return null; }).filter(Boolean);
+    (o.signatures||[]).forEach(s=>{ if(has(s._dropKey)) dropped.push('keyInformation (xs:any) não importado'); if(has(s._dropExt)) dropped.push('signatureInformationExtension (xs:any) não importado'); delete s._dropKey; delete s._dropExt; });
+    delete o._rels; delete o._linkEvents;
+  });
+  events.forEach(e=>{
+    e.linkAgents=(e._linkAgents||[]).map(rf=>{ const t=agtRes(rf.type,rf.value); if(t) return {agentLid:t.lid, role:rf.role||''}; dropped.push(`linkingAgent de ${e.idValue} → ${rf.type||''}/${rf.value}`); return null; }).filter(Boolean);
+    e.linkObjects=(e._linkObjects||[]).map(rf=>{ const t=objRes(rf.type,rf.value); if(t) return {objectLid:t.lid, role:rf.role||''}; dropped.push(`linkingObject de ${e.idValue} → ${rf.type||''}/${rf.value}`); return null; }).filter(Boolean);
+    delete e._linkAgents; delete e._linkObjects;
+  });
+  rights.forEach(r=>{
+    r.linkObjects=(r._linkObjects||[]).map(rf=>{ const t=objRes(rf.type,rf.value); if(t) return t.lid; dropped.push(`rights linkObject de ${r.idValue} → ${rf.type||''}/${rf.value}`); return null; }).filter(Boolean);
+    r.linkAgents=(r._linkAgents||[]).map(rf=>{ const t=agtRes(rf.type,rf.value); if(t) return t.lid; dropped.push(`rights linkAgent de ${r.idValue} → ${rf.type||''}/${rf.value}`); return null; }).filter(Boolean);
+    delete r._linkObjects; delete r._linkAgents;
+  });
+  return {ok:true, model:{objects,events,agents,rights}, counter:lidCounter, dropped};
+}
+function importPremisWideCSV(text){
+  const res=parsePremisWideCSV(text);
+  if(!res.ok) return res;
+  if((model.objects.length||model.events.length||model.agents.length||model.rights.length) && !confirm('Importar substitui o conteúdo atual do modelo. Continuar?')) return {ok:false,cancelled:true};
+  Object.assign(model,{objects:res.model.objects,events:res.model.events,agents:res.model.agents,rights:res.model.rights,relationships:[]});
+  editing.object=editing.event=editing.agent=editing.rights=null;
+  objDraft=mk.object(); evtDraft=mk.event(); agtDraft=mk.agent(); rgtDraft=null;
+  renderForm(); renderModel(); renderOutput();
+  return {ok:true, counts:{o:res.model.objects.length,e:res.model.events.length,a:res.model.agents.length,r:res.model.rights.length}, dropped:res.dropped};
+}
+function handlePremisCSVFile(ev){
+  const file=ev.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const host=document.getElementById('wideCsvMsg');
+    let res; try{ res=importPremisWideCSV(e.target.result); }
+    catch(err){ if(host) host.innerHTML=`<div class="val-item bad"><span class="ico">✕</span><span>Erro ao ler o CSV: ${esc(err.message||String(err))}</span></div>`; ev.target.value=''; return; }
+    if(host){
+      if(res.ok){
+        let h=`<div class="val-item ok"><span class="ico">✓</span><span>Importado: ${res.counts.o} object(s), ${res.counts.e} event(s), ${res.counts.a} agent(s), ${res.counts.r} rights. Edite pelos cards/abas e valide em <strong>Saída</strong>.</span></div>`;
+        if(res.dropped&&res.dropped.length){ const u=[...new Set(res.dropped)]; h+=`<div class="val-item warn"><span class="ico">!</span><span>${u.length} aviso(s) — vínculo fora do documento ou xs:any não importado: ${esc(u.slice(0,6).join('; '))}${u.length>6?'…':''}</span></div>`; }
         host.innerHTML=h;
       } else if(res.cancelled){ host.innerHTML=''; }
       else host.innerHTML=`<div class="val-item bad"><span class="ico">✕</span><span>Não foi possível importar: ${esc(res.error||'erro')}</span></div>`;
