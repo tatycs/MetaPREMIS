@@ -1959,12 +1959,49 @@ function handleFormatIdFile(ev){
     const {recs,meta}=parseFormatIdFile(file.name,e.target.result);
     if(!recs.length){ msg.innerHTML='<div class="val-item warn"><span class="ico">!</span><span>Nenhum registro no arquivo.</span></div>'; return; }
     const r=applyFormatId(recs,meta); renderModel(); renderOutput();
-    let h=`<div class="val-item ok"><span class="ico">✓</span><span><strong>${r.updated}</strong> object(s) atualizado(s)${r.created?(`, <strong>${r.created}</strong> criado(s)`):''} — fonte: ${esc(meta.tool)}${meta.version?(' '+esc(meta.version)):''}${meta.sig?(' · PRONOM '+esc(meta.sig)):''}. Fixity preservada.</span></div>`;
-    if(r.unmatchedObjs.length) h+=`<div class="val-item warn"><span class="ico">!</span><span>${r.unmatchedObjs.length} object(s) do modelo sem correspondência no arquivo: ${esc(r.unmatchedObjs.slice(0,8).join(', '))}${r.unmatchedObjs.length>8?'…':''}.</span></div>`;
-    if(r.unknownRecs.length) h+=`<div class="val-item info"><span class="ico">i</span><span>${r.unknownRecs.length} registro(s) sem identificação (UNKNOWN): ${esc(r.unknownRecs.slice(0,8).join(', '))}${r.unknownRecs.length>8?'…':''}.</span></div>`;
-    msg.innerHTML=h;
+    msg.innerHTML=fmtIdReportHTML(r,meta);
   }catch(err){ msg.innerHTML=`<div class="val-item bad"><span class="ico">✕</span><span>Não foi possível ler: ${esc(err.message)}.</span></div>`; } };
   reader.readAsText(file); ev.target.value='';
+}
+function fmtIdReportHTML(r,meta){
+  let h=`<div class="val-item ok"><span class="ico">✓</span><span><strong>${r.updated}</strong> object(s) atualizado(s)${r.created?(`, <strong>${r.created}</strong> criado(s)`):''} — fonte: ${esc(meta.tool)}${meta.version?(' '+esc(meta.version)):''}${meta.sig?(' · PRONOM '+esc(meta.sig)):''}. Fixity preservada.</span></div>`;
+  if(r.unmatchedObjs&&r.unmatchedObjs.length) h+=`<div class="val-item warn"><span class="ico">!</span><span>${r.unmatchedObjs.length} object(s) do modelo sem correspondência: ${esc(r.unmatchedObjs.slice(0,8).join(', '))}${r.unmatchedObjs.length>8?'…':''}.</span></div>`;
+  if(r.unknownRecs&&r.unknownRecs.length) h+=`<div class="val-item info"><span class="ico">i</span><span>${r.unknownRecs.length} registro(s) sem identificação (UNKNOWN): ${esc(r.unknownRecs.slice(0,8).join(', '))}${r.unknownRecs.length>8?'…':''}.</span></div>`;
+  return h;
+}
+/* ===== Siegfried no navegador (WebAssembly oficial) — PRONOM completo, nada é enviado ===== */
+let __sfReady=null;
+function loadSiegfried(){
+  if(__sfReady) return __sfReady;
+  __sfReady=new Promise((resolve,reject)=>{
+    const s=document.createElement('script'); s.src='vendor/siegfried-wasm/wasm_exec.js';
+    s.onload=()=>{ try{
+      const go=new Go(); const url='vendor/siegfried-wasm/sf.wasm';
+      const boot=inst=>{ go.run(inst); let t=0; (function w(){ if(typeof identify==='function') return resolve(true); if(t++>400) return reject(new Error('Siegfried WASM não inicializou.')); setTimeout(w,50); })(); };
+      const viaBuf=()=>fetch(url).then(r=>r.arrayBuffer()).then(buf=>WebAssembly.instantiate(buf, go.importObject)).then(o=>boot(o.instance));
+      if(WebAssembly.instantiateStreaming){ WebAssembly.instantiateStreaming(fetch(url), go.importObject).then(o=>boot(o.instance)).catch(()=>viaBuf().catch(reject)); }
+      else viaBuf().catch(reject);
+    }catch(e){ reject(e); } };
+    s.onerror=()=>reject(new Error('não foi possível carregar o runtime (wasm_exec.js).'));
+    document.head.appendChild(s);
+  });
+  return __sfReady;
+}
+async function runSiegfriedWasm(mode){
+  const msg=document.getElementById('sfWasmMsg'); if(!msg) return;
+  if(!(window.showOpenFilePicker||window.showDirectoryPicker)){ msg.innerHTML='<div class="val-item warn"><span class="ico">!</span><span>O Siegfried no navegador precisa da File System Access API — disponível no <strong>Chrome</strong> ou <strong>Edge</strong>. No Firefox/Safari, use “extrair metadados” acima ou importe um sf.json (importar arquivo).</span></div>'; return; }
+  let handles;
+  try{ handles = mode==='dir' ? [await window.showDirectoryPicker()] : await window.showOpenFilePicker({multiple:true}); }
+  catch(err){ if(err&&err.name==='AbortError') return; msg.innerHTML=`<div class="val-item warn"><span class="ico">!</span><span>${esc(err.message||String(err))}</span></div>`; return; }
+  try{
+    msg.innerHTML='<div class="val-item info"><span class="ico">…</span><span>carregando o Siegfried (~8,4 MB, só na 1ª vez) e identificando… nada é enviado.</span></div>';
+    await loadSiegfried();
+    const all={siegfried:'', identifiers:[], files:[]};
+    for(const h of handles){ const out=await identify(h,'json'); const d=JSON.parse(out); if(!all.siegfried) all.siegfried=d.siegfried; if((!all.identifiers||!all.identifiers.length)&&d.identifiers) all.identifiers=d.identifiers; (d.files||[]).forEach(f=>all.files.push(f)); }
+    if(!all.files.length){ msg.innerHTML='<div class="val-item warn"><span class="ico">!</span><span>Nenhum arquivo identificado na seleção.</span></div>'; return; }
+    const parsed=parseSiegfriedJSON(JSON.stringify(all)); const r=applyFormatId(parsed.recs, parsed.meta); renderModel(); renderOutput();
+    msg.innerHTML=fmtIdReportHTML(r, parsed.meta);
+  }catch(err){ msg.innerHTML=`<div class="val-item bad"><span class="ico">✕</span><span>Erro no Siegfried WASM: ${esc(err.message||String(err))}</span></div>`; }
 }
 
 /* =================================================================
@@ -2257,11 +2294,18 @@ function renderExtract(){
     <input type="file" id="exFiles" multiple style="display:none"><input type="file" id="exDir" webkitdirectory style="display:none">
   </div>
   <div id="exResult"></div>
+  <div class="import-zone">
+    <p style="margin:0 0 8px;font-size:12.5px"><strong>Ou identifique com o Siegfried (no navegador)</strong> — PRONOM completo, <strong>sem instalar nada</strong>. Roda o WASM oficial do Siegfried localmente; <strong>nada é enviado</strong>. Preenche o <em>formatRegistry</em> (PUID/nome/versão) e não toca a fixity. <span style="color:var(--ink-soft)">Requer Chrome/Edge; baixa ~8&nbsp;MB na 1ª vez. Dica: rode “extrair metadados” antes (para a fixidez), depois o Siegfried para o formato.</span></p>
+    <div class="btn-row"><button class="btn" id="sfWasmDir">Siegfried: escolher pasta</button><button class="btn ghost" id="sfWasmFiles">escolher arquivos</button></div>
+    <div id="sfWasmMsg" style="margin-top:8px"></div>
+  </div>
   <p class="hint"><strong>Identificação embutida (aproximada)</strong>, por conteúdo: PDF, PNG, JPEG/JFIF, TIFF, BMP, GIF, MP3, WAV, XML, texto e Office/ODF/EPUB (via ZIP). O PUID e a versão são estimados — para identificação <strong>autoritativa</strong> do PRONOM, rode DROID/Siegfried local e importe (<a href="https://github.com/tatycs/oficina-premis/blob/main/docs/IMPORTACAO.md" target="_blank" rel="noopener">seção 4 do tutorial</a>).</p>`;
   document.getElementById('pickExtract').onclick=()=>document.getElementById('exFiles').click();
   document.getElementById('pickExtractDir').onclick=()=>document.getElementById('exDir').click();
   document.getElementById('exFiles').onchange=handleExtract;
   document.getElementById('exDir').onchange=handleExtract;
+  const sfd=document.getElementById('sfWasmDir'); if(sfd) sfd.onclick=()=>runSiegfriedWasm('dir');
+  const sff=document.getElementById('sfWasmFiles'); if(sff) sff.onclick=()=>runSiegfriedWasm('files');
 }
 async function handleExtract(ev){
   const files=[...ev.target.files]; if(!files.length) return;
