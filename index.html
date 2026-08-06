@@ -2083,11 +2083,33 @@ function setMode(mode){
    arquivo; MP3=fmt/134; XML=fmt/101; texto=x-fmt/111). Para PRONOM
    completo, use DROID/Siegfried local e importe o CSV.
    ================================================================= */
+/* Versão efetiva do PDF: MAIOR entre o cabeçalho (%PDF-x.y) e o override /Version
+   no dicionário Catalog (/Root). Ver ISO 32000-1 §7.5.2: quando o Catalog declara
+   /Version maior que a do cabeçalho (comum em PDFs assinados/atualizados de forma
+   incremental), prevalece a do Catalog. Scan escopado ao objeto que contém /Catalog
+   (o app é autocontido, sem biblioteca de PDF). */
+function pdfVersion(b){
+  const MAP={'1.0':'fmt/14','1.1':'fmt/15','1.2':'fmt/16','1.3':'fmt/17','1.4':'fmt/18','1.5':'fmt/19','1.6':'fmt/20','1.7':'fmt/276','2.0':'fmt/1129'};
+  const ok=v=>/^\d\.\d$/.test(v);
+  const cmp=(a,c)=>{const A=a.split('.').map(Number),C=c.split('.').map(Number);return A[0]!==C[0]?A[0]-C[0]:A[1]-C[1];};
+  let hv=''; for(let i=5;i<8&&i<b.length;i++) hv+=String.fromCharCode(b[i]);
+  if(!ok(hv)) hv='';
+  let s=''; try{ s=new TextDecoder('latin1').decode(b); }catch(e){ const L=Math.min(b.length,4000000); for(let i=0;i<L;i++) s+=String.fromCharCode(b[i]); }
+  let eff=hv; const re=/\/Version\s*\/(\d\.\d)/g; let m;
+  while((m=re.exec(s))){
+    const v=m[1]; if(!ok(v)) continue;
+    const a=s.lastIndexOf(' obj', m.index), o0=a<0?Math.max(0,m.index-1500):a;
+    const z=s.indexOf('endobj', m.index), o1=z<0?Math.min(s.length,m.index+1500):z;
+    const slice=s.slice(o0,o1);
+    if(/\/Type\s*\/Catalog\b/.test(slice) || /\/Catalog\b/.test(slice)){ if(!eff || cmp(v,eff)>0) eff=v; }
+  }
+  return {version: ok(eff)?eff:'', puid: MAP[eff]||''};
+}
 function detectFormat(b,name){
   const ext=(name.split('.').pop()||'').toLowerCase(), n=b.length;
   const at=(arr,off)=>arr.every((v,i)=>b[(off||0)+i]===v);
   const asc=(off,len)=>{let s='';for(let i=0;i<len&&off+i<n;i++)s+=String.fromCharCode(b[off+i]);return s;};
-  if(at([0x25,0x50,0x44,0x46,0x2D])){ const ver=asc(5,3); const map={'1.0':'fmt/14','1.1':'fmt/15','1.2':'fmt/16','1.3':'fmt/17','1.4':'fmt/18','1.5':'fmt/19','1.6':'fmt/20','1.7':'fmt/276'}; return {name:'Portable Document Format (PDF)',version:/^1\.[0-7]$/.test(ver)?ver:'',mime:'application/pdf',puid:map[ver]||''}; }
+  if(at([0x25,0x50,0x44,0x46,0x2D])){ const pv=pdfVersion(b); return {name:'Portable Document Format (PDF)',version:pv.version,mime:'application/pdf',puid:pv.puid}; }
   if(asc(0,6)==='GIF87a') return {name:'Graphics Interchange Format (GIF)',version:'87a',mime:'image/gif',puid:'fmt/3'};
   if(asc(0,6)==='GIF89a') return {name:'Graphics Interchange Format (GIF)',version:'89a',mime:'image/gif',puid:'fmt/4'};
   if(at([0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A])) return {name:'Portable Network Graphics (PNG)',version:'',mime:'image/png',puid:''};
