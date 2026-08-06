@@ -2344,7 +2344,7 @@ function renderXsd(){
   const head='<div class="val-head">camada 1 — schema (XSD oficial PREMIS 3.0)</div>';
   if(s.status==='running'){ host.innerHTML=head+`<div class="val-item info"><span class="ico">…</span><span>validando estrutura contra o premis-v3-0.xsd…</span></div>`; return; }
   if(s.status==='idle' || s.forXml!==xml){
-    host.innerHTML=head+`<div class="val-item info"><span class="ico">i</span><span>Estrutura ainda não validada contra o XSD nesta versão do documento — clique em <strong>validar contra o XSD</strong>. Roda no navegador (libxml2/wasm); nada sai da máquina.<span class="vsrc">fonte: XSD PREMIS v3 — validação exaustiva de estrutura</span></span></div>`;
+    host.innerHTML=head+`<div class="val-item info"><span class="ico">i</span><span>Estrutura ainda não validada contra o XSD nesta versão do documento — clique em <strong>verificar integridade</strong> (valida a estrutura contra o XSD e roda as camadas 2–3). Roda no navegador (libxml2/wasm); nada sai da máquina.<span class="vsrc">fonte: XSD PREMIS v3 — validação exaustiva de estrutura</span></span></div>`;
     return;
   }
   if(s.status==='valid'){
