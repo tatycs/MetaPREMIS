@@ -131,9 +131,23 @@ sf -version                      # confira: ex. "siegfried 1.11.0 ... DROID_Sign
 No JSON, a versão do Siegfried e da assinatura PRONOM vêm no próprio arquivo
 (`siegfried` e `identifiers[].details`) e são registradas numa **nota** do formato.
 
-**DROID** (The National Archives): exporte o perfil como **CSV** (*Export → one row per file*).
-O CSV do DROID **não** traz a versão do *signature file* — anote-a (Tools → *Check for
-signature updates*) para rastreabilidade.
+**DROID** (The National Archives — tem interface gráfica; bom para começar).
+Página: https://github.com/digital-preservation/droid/releases. Requer **Java** instalado
+(verifique com `java -version`; o DROID 6.7 pede Java 11+, e o **6.6.1** roda com Java 8).
+Passo a passo no Windows:
+
+1. Baixe o **`droid-binary-6.x.x-bin.zip`** (o arquivo que termina em `-bin.zip`) e **extraia**
+   para uma pasta simples, ex.: `C:\DROID`.
+2. Abra com **duplo clique em `droid.bat`**. Se o Windows (SmartScreen) avisar:
+   *Mais informações → Executar assim mesmo* (é software do The National Archives).
+3. **Atualize as assinaturas** (só na 1ª vez): *Tools → Check for signature updates → Download*.
+   **Anote a versão** que aparecer (ex.: `DROID_SignatureFile_V120`) para rastreabilidade — o
+   CSV do DROID **não** a inclui.
+4. **New** (novo perfil) → **Add** → escolha a **pasta** com os arquivos → **Start**.
+5. **Export → Export profiles as CSV**, opção **“one row per file”** → salve como `droid.csv`.
+
+Nada é enviado: o DROID lê os arquivos **localmente**; o *Check for signature updates* apenas
+baixa a base pública do PRONOM (dado de referência).
 
 ### Importar no app
 
