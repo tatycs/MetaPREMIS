@@ -114,13 +114,14 @@ o relatório (**seção 4**). Arquivos muito grandes são lidos inteiros na mem�
 No mesmo painel **extrair metadados** há também **“Siegfried: escolher pasta / arquivos”**.
 Isso roda o **Siegfried oficial em WebAssembly** dentro da própria página (base **PRONOM
 completa**, embutida) — **sem instalar nada e sem enviar arquivos**. Preenche o
-`formatRegistry` (PUID/nome/versão) nos objects e **preserva a fixidez**. Requer **Chrome ou
+`formatRegistry` (PUID/nome/versão) nos objects **e calcula a fixidez** (SHA-256, ou SHA-512
+se marcada a opção) — **sem sobrescrever** uma fixidez já existente. Requer **Chrome ou
 Edge** (usa a File System Access API) e baixa ~8&nbsp;MB do WASM só na 1ª vez. No
 Firefox/Safari, use a identificação embutida ou a importação de `sf.json`/CSV (seção 4).
 
-> **Para a oficina:** é o caminho mais simples para o aluno — abre o site, clica em
-> *extrair metadados* (fixidez + tamanho) e depois em *Siegfried: escolher pasta* (formato
-> PRONOM autoritativo), tudo no navegador, sem instalação.
+> **Para a oficina:** é o caminho mais simples para o aluno — abre o site e clica em
+> *Siegfried: escolher pasta*: identifica o **formato PRONOM autoritativo** **e** calcula a
+> **fixidez** (+ tamanho) de uma vez só, tudo no navegador, sem instalação.
 
 ## 4. Importar identificação de formato (Siegfried / DROID) — PRONOM completo
 
@@ -136,8 +137,9 @@ magic-byte interno.
 **Siegfried** (https://www.itforarchivists.com/siegfried):
 
 ```bash
-sf -json objects/ > sf.json      # JSON (recomendado — traz a versão do sf e do PRONOM)
-sf -csv  objects/ > sf.csv       # CSV
+sf -json objects/ > sf.json          # JSON (recomendado — traz a versão do sf e do PRONOM)
+sf -sha256 -json objects/ > sf.json  # idem + fixidez (SHA-256), importada junto com o formato
+sf -csv  objects/ > sf.csv           # CSV
 sf -version                      # confira: ex. "siegfried 1.11.0 ... DROID_SignatureFile_V120.xml"
 ```
 
@@ -175,14 +177,16 @@ baixa a base pública do PRONOM (dado de referência).
    `warning` numa **nota**, junto com a origem (ex.: *formato identificado por Siegfried
    1.11.0 / PRONOM DROID_SignatureFile_V120.xml*).
 4. Arquivos do relatório **sem object** no modelo viram novos `object` (tipo `file`, com
-   `size`, **sem fixidez** — rode a extração se quiser o hash). Registros **UNKNOWN** são
-   apenas reportados.
+   `size`; **com fixidez se o relatório trouxer o hash** — ex.: `sf -sha256`, ou as colunas
+   `*_HASH` do DROID). Registros **UNKNOWN** são apenas reportados.
 5. O resumo mostra quantos objects foram **atualizados**, **criados**, quantos ficaram **sem
    correspondência** no relatório e quantos registros ficaram **sem identificação** — nada é
    silenciado.
 
 > **Ordem sugerida:** primeiro **extrair metadados** (fixidez + tamanho no navegador), depois
-> **importar a identificação** do Siegfried/DROID (formato/PUID). A fixidez não é tocada.
+> **importar a identificação** do Siegfried/DROID (formato/PUID). Uma fixidez **já calculada
+> nunca é sobrescrita**; se o relatório trouxer hash (ex.: `sf -sha256`), ele preenche a
+> fixidez de objects que ainda não têm.
 
 ## Depois de importar
 Reveja sempre em **Saída + validação**: a **camada 1** valida a estrutura contra o

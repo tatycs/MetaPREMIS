@@ -1899,22 +1899,24 @@ function baseKey(p){ const s=String(p||'').replace(/\\/g,'/').replace(/\/+$/,'')
 function objBaseKey(o){ return baseKey(String(o.originalName||'').replace(/^objects\//,'')); }
 function parseCSVtable(txt){ const lines=txt.split(/\r?\n/).filter(l=>l.length); if(!lines.length) return {head:[],rows:[]}; const head=splitCSV(lines[0]); const rows=lines.slice(1).filter(l=>l.trim()).map(l=>{ const c=splitCSV(l); const o={}; head.forEach((h,i)=>o[h]=c[i]!=null?c[i]:''); return o; }); return {head,rows}; }
 function groupByKey(rows,fn){ const g=new Map(); rows.forEach(r=>{ const k=fn(r); if(!g.has(k)) g.set(k,[]); g.get(k).push(r); }); return g; }
+function sfChecksum(o){ const M={sha512:'SHA-512',sha256:'SHA-256',sha1:'SHA-1',md5:'MD5',crc:'CRC32'}; for(const k in M){ if(o&&o[k]) return {algo:M[k], digest:o[k]}; } return {algo:'',digest:''}; }
 function parseSiegfriedJSON(txt){
   const d=JSON.parse(txt);
   if(!d||!Array.isArray(d.files)) throw new Error('não parece Siegfried JSON (sem "files").');
   const sig=(d.identifiers&&d.identifiers[0]&&d.identifiers[0].details)||d.signature||'';
-  const recs=(d.files||[]).map(f=>{ const ms=(f.matches||[]).filter(m=>m&&m.id&&m.id!=='UNKNOWN'); const b=ms[0]||{}; return { name:f.filename||'', size:(f.filesize!=null?String(f.filesize):''), puid:b.id||'', fmtName:b.format||'', version:b.version||'', mime:b.mime||'', basis:b.basis||'', warning:b.warning||'', others:ms.slice(1).map(m=>`${m.id} ${m.format||''}`.trim()) }; });
+  const recs=(d.files||[]).map(f=>{ const ms=(f.matches||[]).filter(m=>m&&m.id&&m.id!=='UNKNOWN'); const b=ms[0]||{}; const ck=sfChecksum(f); return { name:f.filename||'', size:(f.filesize!=null?String(f.filesize):''), puid:b.id||'', fmtName:b.format||'', version:b.version||'', mime:b.mime||'', basis:b.basis||'', warning:b.warning||'', checksum:ck.digest, checksumAlgo:ck.algo, others:ms.slice(1).map(m=>`${m.id} ${m.format||''}`.trim()) }; });
   return {recs, meta:{tool:'Siegfried', version:d.siegfried||'', sig:sig}};
 }
 function parseSiegfriedCSV(txt){
   const {rows}=parseCSVtable(txt); const g=groupByKey(rows,r=>r.filename||''); const recs=[];
-  g.forEach((rs,fn)=>{ const ms=rs.filter(r=>r.id&&r.id!=='UNKNOWN'); const b=ms[0]||rs[0]||{}; recs.push({ name:fn, size:b.filesize||'', puid:(b.id&&b.id!=='UNKNOWN')?b.id:'', fmtName:b.format||'', version:b.version||'', mime:b.mime||'', basis:b.basis||'', warning:b.warning||'', others:ms.slice(1).map(m=>`${m.id} ${m.format||''}`.trim()) }); });
+  g.forEach((rs,fn)=>{ const ms=rs.filter(r=>r.id&&r.id!=='UNKNOWN'); const b=ms[0]||rs[0]||{}; const ck=sfChecksum(b); recs.push({ name:fn, size:b.filesize||'', puid:(b.id&&b.id!=='UNKNOWN')?b.id:'', fmtName:b.format||'', version:b.version||'', mime:b.mime||'', basis:b.basis||'', warning:b.warning||'', checksum:ck.digest, checksumAlgo:ck.algo, others:ms.slice(1).map(m=>`${m.id} ${m.format||''}`.trim()) }); });
   return {recs, meta:{tool:'Siegfried', version:'', sig:''}};
 }
 function parseDroidCSV(txt){
   const {head,rows}=parseCSVtable(txt); const nc=head.includes('NAME')?'NAME':(head.includes('FILE_PATH')?'FILE_PATH':head[0]);
   const g=groupByKey(rows,r=>r[nc]||r.FILE_PATH||r.NAME||''); const recs=[];
-  g.forEach((rs,fn)=>{ const wi=rs.filter(r=>r.PUID); const b=wi[0]||rs[0]||{}; recs.push({ name:b.FILE_PATH||b.NAME||fn, size:b.SIZE||'', puid:b.PUID||'', fmtName:b.FORMAT_NAME||'', version:b.FORMAT_VERSION||'', mime:b.MIME_TYPE||'', basis:'', warning:(b.STATUS&&!/^(Done|)$/i.test(b.STATUS))?b.STATUS:'', others:wi.slice(1).map(m=>`${m.PUID} ${m.FORMAT_NAME||''}`.trim()) }); });
+  const dm={SHA512_HASH:'SHA-512',SHA256_HASH:'SHA-256',SHA1_HASH:'SHA-1',MD5_HASH:'MD5'};
+  g.forEach((rs,fn)=>{ const wi=rs.filter(r=>r.PUID); const b=wi[0]||rs[0]||{}; let ca='',cv=''; for(const k in dm){ if(b[k]){ca=dm[k];cv=b[k];break;} } recs.push({ name:b.FILE_PATH||b.NAME||fn, size:b.SIZE||'', puid:b.PUID||'', fmtName:b.FORMAT_NAME||'', version:b.FORMAT_VERSION||'', mime:b.MIME_TYPE||'', basis:'', warning:(b.STATUS&&!/^(Done|)$/i.test(b.STATUS))?b.STATUS:'', checksum:cv, checksumAlgo:ca, others:wi.slice(1).map(m=>`${m.PUID} ${m.FORMAT_NAME||''}`.trim()) }); });
   return {recs, meta:{tool:'DROID', version:'', sig:''}};
 }
 function parseFormatIdFile(name,txt){
@@ -1935,7 +1937,7 @@ function fmtIdNote(rec,meta){
 function applyFormatId(recs,meta){
   const before=model.objects.filter(o=>(o.objType||'file')!=='intellectualEntity');
   const idx=new Map(); before.forEach(o=>{ const k=objBaseKey(o); if(!k) return; if(!idx.has(k)) idx.set(k,[]); idx.get(k).push(o); });
-  const matched=new Set(); let updated=0, created=0; const unknownRecs=[];
+  const matched=new Set(); let updated=0, created=0, fixityAdded=0; const unknownRecs=[];
   recs.forEach(rec=>{
     if(!has(rec.puid)&&!has(rec.fmtName)){ unknownRecs.push(rec.name||'(sem nome)'); return; }
     const k=baseKey(rec.name); const cands=(k&&idx.get(k))||[];
@@ -1947,10 +1949,11 @@ function applyFormatId(recs,meta){
     if(has(rec.version)) f.version=rec.version;
     if(has(rec.puid)){ f.regName='PRONOM'; f.regKey=rec.puid; f.regRole='specification'; }
     if(!has(c.size)&&has(rec.size)) c.size=String(rec.size);
+    if(has(rec.checksum) && !((c.fixities||[]).some(x=>has(x.digest)))){ c.fixities=[{algo:rec.checksumAlgo||'SHA-256', digest:rec.checksum, originator:''}]; fixityAdded++; }
     f.notes=f.notes||[]; const note=fmtIdNote(rec,meta); if(!f.notes.includes(note)) f.notes.push(note);
   });
   const unmatchedObjs=before.filter(o=>!matched.has(o)).map(o=>o.originalName||o.lid);
-  return {updated, created, unknownRecs, unmatchedObjs};
+  return {updated, created, fixityAdded, unknownRecs, unmatchedObjs};
 }
 function handleFormatIdFile(ev){
   const file=ev.target.files[0]; if(!file) return; const msg=document.getElementById('fmtIdMsg');
@@ -1964,7 +1967,7 @@ function handleFormatIdFile(ev){
   reader.readAsText(file); ev.target.value='';
 }
 function fmtIdReportHTML(r,meta){
-  let h=`<div class="val-item ok"><span class="ico">✓</span><span><strong>${r.updated}</strong> object(s) atualizado(s)${r.created?(`, <strong>${r.created}</strong> criado(s)`):''} — fonte: ${esc(meta.tool)}${meta.version?(' '+esc(meta.version)):''}${meta.sig?(' · PRONOM '+esc(meta.sig)):''}. Fixity preservada.</span></div>`;
+  let h=`<div class="val-item ok"><span class="ico">✓</span><span><strong>${r.updated}</strong> object(s) atualizado(s)${r.created?(`, <strong>${r.created}</strong> criado(s)`):''}${r.fixityAdded?(`, <strong>${r.fixityAdded}</strong> com fixidez calculada`):''} — fonte: ${esc(meta.tool)}${meta.version?(' '+esc(meta.version)):''}${meta.sig?(' · PRONOM '+esc(meta.sig)):''}. Fixidez já existente é preservada.</span></div>`;
   if(r.unmatchedObjs&&r.unmatchedObjs.length) h+=`<div class="val-item warn"><span class="ico">!</span><span>${r.unmatchedObjs.length} object(s) do modelo sem correspondência: ${esc(r.unmatchedObjs.slice(0,8).join(', '))}${r.unmatchedObjs.length>8?'…':''}.</span></div>`;
   if(r.unknownRecs&&r.unknownRecs.length) h+=`<div class="val-item info"><span class="ico">i</span><span>${r.unknownRecs.length} registro(s) sem identificação (UNKNOWN): ${esc(r.unknownRecs.slice(0,8).join(', '))}${r.unknownRecs.length>8?'…':''}.</span></div>`;
   return h;
@@ -1997,7 +2000,8 @@ async function runSiegfriedWasm(mode){
     msg.innerHTML='<div class="val-item info"><span class="ico">…</span><span>carregando o Siegfried (~8,4 MB, só na 1ª vez) e identificando… nada é enviado.</span></div>';
     await loadSiegfried();
     const all={siegfried:'', identifiers:[], files:[]};
-    for(const h of handles){ const out=await identify(h,'json'); const d=JSON.parse(out); if(!all.siegfried) all.siegfried=d.siegfried; if((!all.identifiers||!all.identifiers.length)&&d.identifiers) all.identifiers=d.identifiers; (d.files||[]).forEach(f=>all.files.push(f)); }
+    const algo=(document.getElementById('ex_sha512')||{}).checked?'sha512':'sha256';
+    for(const h of handles){ const out=await identify(h,'json',algo); const d=JSON.parse(out); if(!all.siegfried) all.siegfried=d.siegfried; if((!all.identifiers||!all.identifiers.length)&&d.identifiers) all.identifiers=d.identifiers; (d.files||[]).forEach(f=>all.files.push(f)); }
     if(!all.files.length){ msg.innerHTML='<div class="val-item warn"><span class="ico">!</span><span>Nenhum arquivo identificado na seleção.</span></div>'; return; }
     const parsed=parseSiegfriedJSON(JSON.stringify(all)); const r=applyFormatId(parsed.recs, parsed.meta); renderModel(); renderOutput();
     msg.innerHTML=fmtIdReportHTML(r, parsed.meta);
@@ -2295,7 +2299,7 @@ function renderExtract(){
   </div>
   <div id="exResult"></div>
   <div class="import-zone">
-    <p style="margin:0 0 8px;font-size:12.5px"><strong>Ou identifique com o Siegfried (no navegador)</strong> — PRONOM completo, <strong>sem instalar nada</strong>. Roda o WASM oficial do Siegfried localmente; <strong>nada é enviado</strong>. Preenche o <em>formatRegistry</em> (PUID/nome/versão) e não toca a fixity. <span style="color:var(--ink-soft)">Requer Chrome/Edge; baixa ~8&nbsp;MB na 1ª vez. Dica: rode “extrair metadados” antes (para a fixidez), depois o Siegfried para o formato.</span></p>
+    <p style="margin:0 0 8px;font-size:12.5px"><strong>Ou identifique com o Siegfried (no navegador)</strong> — PRONOM completo, <strong>sem instalar nada</strong>. Roda o WASM oficial do Siegfried localmente; <strong>nada é enviado</strong>. Preenche o <em>formatRegistry</em> (PUID/nome/versão) <strong>e calcula a fixidez</strong> (SHA-256, ou SHA-512 se marcado acima) — sem sobrescrever uma fixidez já existente. <span style="color:var(--ink-soft)">Requer Chrome/Edge; baixa ~8&nbsp;MB do WASM na 1ª vez.</span></p>
     <div class="btn-row"><button class="btn" id="sfWasmDir">Siegfried: escolher pasta</button><button class="btn ghost" id="sfWasmFiles">escolher arquivos</button></div>
     <div id="sfWasmMsg" style="margin-top:8px"></div>
   </div>
