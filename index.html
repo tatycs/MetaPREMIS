@@ -1861,12 +1861,20 @@ function renderImport(){
     </div>
     <input type="file" id="impFile" accept=".csv,.json,.txt" style="display:none">
   </div>
+  <div class="import-zone">
+    <p style="margin:0 0 8px;font-size:12.5px"><strong>Importar identificação de formato</strong> — saída do <strong>Siegfried</strong> (<code>sf -json</code> / <code>sf -csv</code>) ou <strong>DROID</strong> (CSV). Preenche o <em>formatRegistry</em> (PUID/nome/versão) nos objects por nome de arquivo, <strong>sem tocar a fixity</strong>. Rode a ferramenta local — nada é enviado.</p>
+    <button class="btn" id="pickFmtId">importar identificação (Siegfried/DROID)</button>
+    <input type="file" id="fmtIdFile" accept=".json,.csv" style="display:none">
+    <div id="fmtIdMsg" style="margin-top:8px"></div>
+  </div>
   <div id="mapHost"></div>
   <p class="hint">Tutorial: <a href="https://github.com/tatycs/oficina-premis/blob/main/docs/IMPORTACAO.md" target="_blank" rel="noopener">como importar (docs/IMPORTACAO.md)</a>. CSV/JSON cria entidades com campos básicos; a estrutura completa é montada/editada no formulário.</p>`;
   document.getElementById('pickXml').onclick=()=>document.getElementById('xmlFile').click();
   document.getElementById('xmlFile').onchange=handlePremisXMLFile;
   document.getElementById('pickFile').onclick=()=>document.getElementById('impFile').click();
   document.getElementById('impFile').onchange=handleImport;
+  document.getElementById('pickFmtId').onclick=()=>document.getElementById('fmtIdFile').click();
+  document.getElementById('fmtIdFile').onchange=handleFormatIdFile;
   const dc=document.getElementById('dlCsv'); if(dc) dc.onclick=()=>downloadTemplate('csv');
   const dj=document.getElementById('dlJson'); if(dj) dj.onclick=()=>downloadTemplate('json');
 }
@@ -1880,6 +1888,84 @@ function guessMap(key,unit){if(unit==='—')return false;const k=key.toLowerCase
 function applyMapping(){const mapping={};importedKeys.forEach((k,i)=>{const v=document.getElementById('map_'+i).value;if(v!=='—')mapping[k]=v;});importedRows.forEach(row=>{const vals={};Object.keys(mapping).forEach(sk=>vals[mapping[sk]]=row[sk]);if(currentEnt==='object'){const o=mk.object();o.identifiers[0]={type:vals.idType||'',value:vals.idValue||''};if(vals.formatName)o.characteristics[0].formats[0].name=vals.formatName;o.originalName=vals.originalName||'';model.objects.push(o);}else if(currentEnt==='event'){const e=mk.event();e.idType=vals.idType||'';e.idValue=vals.idValue||'';e.eventType=vals.eventType||'';e.dateTime=vals.dateTime||'';model.events.push(e);}else{const a=mk.agent();a.identifiers[0]={type:vals.idType||'',value:vals.idValue||''};if(vals.name){a.names.push({value:vals.name});}a.agentType=vals.type||'';model.agents.push(a);}});renderModel();renderOutput();document.getElementById('mapHost').innerHTML=`<div class="val-item ok"><span class="ico">✓</span><span>${importedRows.length} ${currentEnt}(s) adicionado(s).</span></div>`;}
 
 function download(filename,text,mime){const blob=new Blob([text],{type:mime||'text/plain'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(a.href);}
+
+/* ===================================================================
+   Importar identificação de formato (Siegfried / DROID) — PRONOM completo.
+   O usuário roda a ferramenta LOCAL e importa a saída; preenchemos o
+   formatRegistry (PUID/nome/versão) nos objects casados por nome de arquivo,
+   SEM tocar a fixity calculada no navegador. Nada é enviado.
+   =================================================================== */
+function baseKey(p){ const s=String(p||'').replace(/\\/g,'/').replace(/\/+$/,''); return s.substring(s.lastIndexOf('/')+1).toLowerCase(); }
+function objBaseKey(o){ return baseKey(String(o.originalName||'').replace(/^objects\//,'')); }
+function parseCSVtable(txt){ const lines=txt.split(/\r?\n/).filter(l=>l.length); if(!lines.length) return {head:[],rows:[]}; const head=splitCSV(lines[0]); const rows=lines.slice(1).filter(l=>l.trim()).map(l=>{ const c=splitCSV(l); const o={}; head.forEach((h,i)=>o[h]=c[i]!=null?c[i]:''); return o; }); return {head,rows}; }
+function groupByKey(rows,fn){ const g=new Map(); rows.forEach(r=>{ const k=fn(r); if(!g.has(k)) g.set(k,[]); g.get(k).push(r); }); return g; }
+function parseSiegfriedJSON(txt){
+  const d=JSON.parse(txt);
+  if(!d||!Array.isArray(d.files)) throw new Error('não parece Siegfried JSON (sem "files").');
+  const sig=(d.identifiers&&d.identifiers[0]&&d.identifiers[0].details)||d.signature||'';
+  const recs=(d.files||[]).map(f=>{ const ms=(f.matches||[]).filter(m=>m&&m.id&&m.id!=='UNKNOWN'); const b=ms[0]||{}; return { name:f.filename||'', size:(f.filesize!=null?String(f.filesize):''), puid:b.id||'', fmtName:b.format||'', version:b.version||'', mime:b.mime||'', basis:b.basis||'', warning:b.warning||'', others:ms.slice(1).map(m=>`${m.id} ${m.format||''}`.trim()) }; });
+  return {recs, meta:{tool:'Siegfried', version:d.siegfried||'', sig:sig}};
+}
+function parseSiegfriedCSV(txt){
+  const {rows}=parseCSVtable(txt); const g=groupByKey(rows,r=>r.filename||''); const recs=[];
+  g.forEach((rs,fn)=>{ const ms=rs.filter(r=>r.id&&r.id!=='UNKNOWN'); const b=ms[0]||rs[0]||{}; recs.push({ name:fn, size:b.filesize||'', puid:(b.id&&b.id!=='UNKNOWN')?b.id:'', fmtName:b.format||'', version:b.version||'', mime:b.mime||'', basis:b.basis||'', warning:b.warning||'', others:ms.slice(1).map(m=>`${m.id} ${m.format||''}`.trim()) }); });
+  return {recs, meta:{tool:'Siegfried', version:'', sig:''}};
+}
+function parseDroidCSV(txt){
+  const {head,rows}=parseCSVtable(txt); const nc=head.includes('NAME')?'NAME':(head.includes('FILE_PATH')?'FILE_PATH':head[0]);
+  const g=groupByKey(rows,r=>r[nc]||r.FILE_PATH||r.NAME||''); const recs=[];
+  g.forEach((rs,fn)=>{ const wi=rs.filter(r=>r.PUID); const b=wi[0]||rs[0]||{}; recs.push({ name:b.FILE_PATH||b.NAME||fn, size:b.SIZE||'', puid:b.PUID||'', fmtName:b.FORMAT_NAME||'', version:b.FORMAT_VERSION||'', mime:b.MIME_TYPE||'', basis:'', warning:(b.STATUS&&!/^(Done|)$/i.test(b.STATUS))?b.STATUS:'', others:wi.slice(1).map(m=>`${m.PUID} ${m.FORMAT_NAME||''}`.trim()) }); });
+  return {recs, meta:{tool:'DROID', version:'', sig:''}};
+}
+function parseFormatIdFile(name,txt){
+  if(String(name).toLowerCase().endsWith('.json')) return parseSiegfriedJSON(txt);
+  const head=splitCSV((txt.split(/\r?\n/)[0]||''));
+  if(head.includes('PUID')||head.includes('FORMAT_NAME')) return parseDroidCSV(txt);
+  if(head.includes('filename')&&head.includes('id')) return parseSiegfriedCSV(txt);
+  throw new Error('CSV não reconhecido — esperado cabeçalho do Siegfried (sf -csv) ou do DROID.');
+}
+function fmtIdNote(rec,meta){
+  let src=meta.tool+(meta.version?(' '+meta.version):''); src += meta.sig?(' / PRONOM '+meta.sig):' / PRONOM';
+  let n='formato identificado por '+src;
+  if(rec.basis) n+='; basis: '+rec.basis;
+  if(rec.warning) n+='; warning: '+rec.warning;
+  if(rec.others&&rec.others.length) n+='; também compatível com: '+rec.others.join('; ');
+  return n;
+}
+function applyFormatId(recs,meta){
+  const before=model.objects.filter(o=>(o.objType||'file')!=='intellectualEntity');
+  const idx=new Map(); before.forEach(o=>{ const k=objBaseKey(o); if(!k) return; if(!idx.has(k)) idx.set(k,[]); idx.get(k).push(o); });
+  const matched=new Set(); let updated=0, created=0; const unknownRecs=[];
+  recs.forEach(rec=>{
+    if(!has(rec.puid)&&!has(rec.fmtName)){ unknownRecs.push(rec.name||'(sem nome)'); return; }
+    const k=baseKey(rec.name); const cands=(k&&idx.get(k))||[];
+    let o = cands.length===1 ? cands[0] : (cands.length>1 ? (cands.find(x=>String((x.characteristics[0]||{}).size||'')===String(rec.size))||cands[0]) : null);
+    if(!o){ o=mk.object(); o.objType='file'; o.identifiers[0]={type:'UUID',value:(self.crypto&&crypto.randomUUID)?crypto.randomUUID():('id-'+Math.random().toString(16).slice(2))}; o.originalName=rec.name||''; if(has(rec.size)) o.characteristics[0].size=String(rec.size); model.objects.push(o); created++; }
+    else if(!matched.has(o)){ matched.add(o); updated++; }
+    const c=o.characteristics[0]; let f=c.formats[0]; if(!f){ f=mk.format(); c.formats=[f]; }
+    if(has(rec.fmtName)) f.name=rec.fmtName;
+    if(has(rec.version)) f.version=rec.version;
+    if(has(rec.puid)){ f.regName='PRONOM'; f.regKey=rec.puid; f.regRole='specification'; }
+    if(!has(c.size)&&has(rec.size)) c.size=String(rec.size);
+    f.notes=f.notes||[]; const note=fmtIdNote(rec,meta); if(!f.notes.includes(note)) f.notes.push(note);
+  });
+  const unmatchedObjs=before.filter(o=>!matched.has(o)).map(o=>o.originalName||o.lid);
+  return {updated, created, unknownRecs, unmatchedObjs};
+}
+function handleFormatIdFile(ev){
+  const file=ev.target.files[0]; if(!file) return; const msg=document.getElementById('fmtIdMsg');
+  const reader=new FileReader();
+  reader.onload=e=>{ try{
+    const {recs,meta}=parseFormatIdFile(file.name,e.target.result);
+    if(!recs.length){ msg.innerHTML='<div class="val-item warn"><span class="ico">!</span><span>Nenhum registro no arquivo.</span></div>'; return; }
+    const r=applyFormatId(recs,meta); renderModel(); renderOutput();
+    let h=`<div class="val-item ok"><span class="ico">✓</span><span><strong>${r.updated}</strong> object(s) atualizado(s)${r.created?(`, <strong>${r.created}</strong> criado(s)`):''} — fonte: ${esc(meta.tool)}${meta.version?(' '+esc(meta.version)):''}${meta.sig?(' · PRONOM '+esc(meta.sig)):''}. Fixity preservada.</span></div>`;
+    if(r.unmatchedObjs.length) h+=`<div class="val-item warn"><span class="ico">!</span><span>${r.unmatchedObjs.length} object(s) do modelo sem correspondência no arquivo: ${esc(r.unmatchedObjs.slice(0,8).join(', '))}${r.unmatchedObjs.length>8?'…':''}.</span></div>`;
+    if(r.unknownRecs.length) h+=`<div class="val-item info"><span class="ico">i</span><span>${r.unknownRecs.length} registro(s) sem identificação (UNKNOWN): ${esc(r.unknownRecs.slice(0,8).join(', '))}${r.unknownRecs.length>8?'…':''}.</span></div>`;
+    msg.innerHTML=h;
+  }catch(err){ msg.innerHTML=`<div class="val-item bad"><span class="ico">✕</span><span>Não foi possível ler: ${esc(err.message)}.</span></div>`; } };
+  reader.readAsText(file); ev.target.value='';
+}
 
 /* =================================================================
    IMPORTAÇÃO de premis.xml (XML -> modelo, editável) e TEMPLATES.
@@ -2140,7 +2226,7 @@ function recordsToObjects(recs,prefix){
     const c=o.characteristics[0]; c.size=String(r.size); c.fixities=[{algo:r.algo,digest:r.sha,originator:''}];
     const f=mk.format(); f.name=r.fmt.name||''; f.version=r.fmt.version||'';
     if(r.fmt.puid){ f.regName='PRONOM'; f.regKey=r.fmt.puid; f.regRole='specification'; }
-    else if(r.fmt.mime){ f.note='MIME: '+r.fmt.mime; }
+    else if(r.fmt.mime){ f.notes.push('MIME: '+r.fmt.mime); }
     c.formats=[f];
     model.objects.push(o);
   });

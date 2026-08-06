@@ -102,7 +102,60 @@ navegador** — os arquivos **não saem da máquina**.
 **Limites (honestos):** a identificação por magic-byte cobre os formatos mais comuns;
 onde não há PUID seguro, o app preenche só **nome/MIME** (sem PUID). Para identificação
 **PRONOM completa e autoritativa**, rode **DROID** ou **Siegfried** localmente e importe
-o CSV (seção 2). Arquivos muito grandes são lidos inteiros na memória para o cálculo do hash.
+o relatório (**seção 4**). Arquivos muito grandes são lidos inteiros na memória para o cálculo do hash.
+
+> Sobre a versão do PDF: o app lê a versão do **cabeçalho** (`%PDF-x.y`) **e** o override
+> `/Version` do dicionário Catalog (`/Root`) — comum em PDFs assinados/atualizados — e usa a
+> **maior** das duas (ISO 32000-1 §7.5.2), mapeando ao PUID correto. Ainda assim, para
+> identificação autoritativa, o Siegfried/DROID (seção 4) é a referência.
+
+## 4. Importar identificação de formato (Siegfried / DROID) — PRONOM completo
+
+Para identificação de formato **de produção** (base PRONOM completa e autoritativa), rode
+**Siegfried** (preferencial) ou **DROID** na sua máquina e importe o resultado. A ferramenta
+lê os arquivos **localmente**; o app só lê o *relatório* que você importa — **nada é enviado**.
+A fixidez calculada no navegador (Web Crypto) é **preservada**; apenas o `formatRegistry`
+(PUID, nome, versão) é preenchido, e a identificação da ferramenta **prevalece** sobre o
+magic-byte interno.
+
+### Gerar o relatório
+
+**Siegfried** (https://www.itforarchivists.com/siegfried):
+
+```bash
+sf -json objects/ > sf.json      # JSON (recomendado — traz a versão do sf e do PRONOM)
+sf -csv  objects/ > sf.csv       # CSV
+sf -version                      # confira: ex. "siegfried 1.11.0 ... DROID_SignatureFile_V120.xml"
+```
+
+No JSON, a versão do Siegfried e da assinatura PRONOM vêm no próprio arquivo
+(`siegfried` e `identifiers[].details`) e são registradas numa **nota** do formato.
+
+**DROID** (The National Archives): exporte o perfil como **CSV** (*Export → one row per file*).
+O CSV do DROID **não** traz a versão do *signature file* — anote-a (Tools → *Check for
+signature updates*) para rastreabilidade.
+
+### Importar no app
+
+1. No painel **Origem** → **importar arquivo**.
+2. Em **Importar identificação de formato**, clique em **importar identificação
+   (Siegfried/DROID)** e escolha `sf.json`, `sf.csv` ou o CSV do DROID (detecção automática
+   pelo cabeçalho).
+3. O app casa cada linha ao `object` do modelo pelo **nome do arquivo** (o `originalName` sem
+   o prefixo `objects/`; o **tamanho** desempata nomes iguais) e preenche `formatName`,
+   `formatVersion` e `formatRegistry` = **PRONOM** / **PUID** / `role=specification`. Havendo
+   **múltiplos matches** (Siegfried), usa o de maior confiança e registra os demais e o
+   `warning` numa **nota**, junto com a origem (ex.: *formato identificado por Siegfried
+   1.11.0 / PRONOM DROID_SignatureFile_V120.xml*).
+4. Arquivos do relatório **sem object** no modelo viram novos `object` (tipo `file`, com
+   `size`, **sem fixidez** — rode a extração se quiser o hash). Registros **UNKNOWN** são
+   apenas reportados.
+5. O resumo mostra quantos objects foram **atualizados**, **criados**, quantos ficaram **sem
+   correspondência** no relatório e quantos registros ficaram **sem identificação** — nada é
+   silenciado.
+
+> **Ordem sugerida:** primeiro **extrair metadados** (fixidez + tamanho no navegador), depois
+> **importar a identificação** do Siegfried/DROID (formato/PUID). A fixidez não é tocada.
 
 ## Depois de importar
 Reveja sempre em **Saída + validação**: a **camada 1** valida a estrutura contra o
