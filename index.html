@@ -2198,13 +2198,28 @@ function detectFormat(b,name){
   if(at([0x25,0x50,0x44,0x46,0x2D])){ const pv=pdfVersion(b); return {name:'Portable Document Format (PDF)',version:pv.version,mime:'application/pdf',puid:pv.puid}; }
   if(asc(0,6)==='GIF87a') return {name:'Graphics Interchange Format (GIF)',version:'87a',mime:'image/gif',puid:'fmt/3'};
   if(asc(0,6)==='GIF89a') return {name:'Graphics Interchange Format (GIF)',version:'89a',mime:'image/gif',puid:'fmt/4'};
-  if(at([0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A])) return {name:'Portable Network Graphics (PNG)',version:'',mime:'image/png',puid:''};
-  if(at([0xFF,0xD8,0xFF])) return {name:'JPEG',version:'',mime:'image/jpeg',puid:''};
-  if(at([0x49,0x49,0x2A,0x00])||at([0x4D,0x4D,0x00,0x2A])) return {name:'Tagged Image File Format (TIFF)',version:'',mime:'image/tiff',puid:''};
+  if(at([0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A])) return {name:'Portable Network Graphics (PNG)',version:'1.2',mime:'image/png',puid:'fmt/13'};
+  if(at([0xFF,0xD8,0xFF])){
+    if(b[3]===0xE0 && asc(6,4)==='JFIF'){ const v=b[11]+'.'+String(b[12]).padStart(2,'0'); const mp={'1.00':'fmt/42','1.01':'fmt/43','1.02':'fmt/44'}; return {name:'JPEG File Interchange Format (JFIF)',version:v,mime:'image/jpeg',puid:mp[v]||''}; }
+    if(b[3]===0xE1 && asc(6,4)==='Exif') return {name:'Exif JPEG',version:'',mime:'image/jpeg',puid:''};
+    return {name:'JPEG',version:'',mime:'image/jpeg',puid:''};
+  }
+  if(at([0x49,0x49,0x2A,0x00])||at([0x4D,0x4D,0x00,0x2A])) return {name:'Tagged Image File Format (TIFF)',version:'',mime:'image/tiff',puid:'fmt/353'};
+  if(at([0x42,0x4D])){ const dib=b[14]|(b[15]<<8)|(b[16]<<16)|(b[17]<<24); const mp={12:'fmt/119',40:'fmt/116',108:'fmt/117',124:'fmt/118'}, vm={12:'OS/2 1.0',40:'3.0',108:'4.0',124:'5.0'}; return {name:'Windows Bitmap (BMP)',version:vm[dib]||'',mime:'image/bmp',puid:mp[dib]||''}; }
   if(asc(0,4)==='RIFF'){ const s=asc(8,4); if(s==='WAVE')return {name:'Waveform Audio (WAV)',version:'',mime:'audio/x-wav',puid:''}; if(s==='WEBP')return {name:'WebP',version:'',mime:'image/webp',puid:''}; if(s==='AVI ')return {name:'Audio Video Interleave (AVI)',version:'',mime:'video/x-msvideo',puid:''}; return {name:'RIFF',version:'',mime:'',puid:''}; }
   if(asc(0,3)==='ID3'||(b[0]===0xFF&&(b[1]&0xE0)===0xE0)) return {name:'MP3 (MPEG-1/2 Audio Layer 3)',version:'',mime:'audio/mpeg',puid:'fmt/134'};
   if(asc(4,4)==='ftyp') return {name:'MPEG-4 / ISO BMFF',version:'',mime:'video/mp4',puid:''};
-  if(at([0x50,0x4B,0x03,0x04])||at([0x50,0x4B,0x05,0x06])||at([0x50,0x4B,0x07,0x08])) return {name:'ZIP (ou formato baseado em ZIP: OOXML/ODF/EPUB)',version:'',mime:'application/zip',puid:''};
+  if(at([0x50,0x4B,0x03,0x04])||at([0x50,0x4B,0x05,0x06])||at([0x50,0x4B,0x07,0x08])){
+    const head=asc(0,Math.min(n,65536));
+    if(/opendocument\.text/.test(head)) return {name:'OpenDocument Text (ODT)',version:'',mime:'application/vnd.oasis.opendocument.text',puid:'fmt/291'};
+    if(/opendocument\.spreadsheet/.test(head)) return {name:'OpenDocument Spreadsheet (ODS)',version:'',mime:'application/vnd.oasis.opendocument.spreadsheet',puid:'fmt/295'};
+    if(/opendocument\.presentation/.test(head)) return {name:'OpenDocument Presentation (ODP)',version:'',mime:'application/vnd.oasis.opendocument.presentation',puid:'fmt/293'};
+    if(/epub\+zip/.test(head)||/META-INF\/container\.xml/.test(head)) return {name:'Electronic Publication (EPUB)',version:'',mime:'application/epub+zip',puid:'fmt/483'};
+    if(/(^|[^a-z])word\//.test(head)) return {name:'Microsoft Word OOXML (DOCX)',version:'',mime:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',puid:'fmt/412'};
+    if(/(^|[^a-z])xl\//.test(head)) return {name:'Microsoft Excel OOXML (XLSX)',version:'',mime:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',puid:'fmt/214'};
+    if(/(^|[^a-z])ppt\//.test(head)) return {name:'Microsoft PowerPoint OOXML (PPTX)',version:'',mime:'application/vnd.openxmlformats-officedocument.presentationml.presentation',puid:'fmt/215'};
+    return {name:'ZIP',version:'',mime:'application/zip',puid:'x-fmt/263'};
+  }
   let off=0; if(b[0]===0xEF&&b[1]===0xBB&&b[2]===0xBF) off=3;
   if(asc(off,5)==='<?xml') return {name:'Extensible Markup Language (XML)',version:'',mime:'application/xml',puid:'fmt/101'};
   let isText=n>off; const lim=Math.min(n,1024); for(let i=off;i<lim;i++){ const x=b[i]; if(x===9||x===10||x===13)continue; if(x<32){isText=false;break;} }
@@ -2242,7 +2257,7 @@ function renderExtract(){
     <input type="file" id="exFiles" multiple style="display:none"><input type="file" id="exDir" webkitdirectory style="display:none">
   </div>
   <div id="exResult"></div>
-  <p class="hint">Formato por magic-byte; PUID do PRONOM quando determinável com segurança (PDF, GIF, MP3, XML, texto). Para PRONOM completo, rode DROID/Siegfried local e importe o CSV. <a href="https://github.com/tatycs/oficina-premis/blob/main/docs/IMPORTACAO.md" target="_blank" rel="noopener">tutorial</a>.</p>`;
+  <p class="hint"><strong>Identificação embutida (aproximada)</strong>, por conteúdo: PDF, PNG, JPEG/JFIF, TIFF, BMP, GIF, MP3, WAV, XML, texto e Office/ODF/EPUB (via ZIP). O PUID e a versão são estimados — para identificação <strong>autoritativa</strong> do PRONOM, rode DROID/Siegfried local e importe (<a href="https://github.com/tatycs/oficina-premis/blob/main/docs/IMPORTACAO.md" target="_blank" rel="noopener">seção 4 do tutorial</a>).</p>`;
   document.getElementById('pickExtract').onclick=()=>document.getElementById('exFiles').click();
   document.getElementById('pickExtractDir').onclick=()=>document.getElementById('exDir').click();
   document.getElementById('exFiles').onchange=handleExtract;
