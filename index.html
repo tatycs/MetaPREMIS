@@ -1934,7 +1934,8 @@ function fmtIdNote(rec,meta){
   if(rec.others&&rec.others.length) n+='; também compatível com: '+rec.others.join('; ');
   return n;
 }
-function applyFormatId(recs,meta){
+function applyFormatId(recs,meta,opts){
+  const prefix=(opts&&opts.prefix)||false;
   const before=model.objects.filter(o=>(o.objType||'file')!=='intellectualEntity');
   const idx=new Map(); before.forEach(o=>{ const k=objBaseKey(o); if(!k) return; if(!idx.has(k)) idx.set(k,[]); idx.get(k).push(o); });
   const matched=new Set(); let updated=0, created=0, fixityAdded=0; const unknownRecs=[];
@@ -1942,7 +1943,7 @@ function applyFormatId(recs,meta){
     if(!has(rec.puid)&&!has(rec.fmtName)){ unknownRecs.push(rec.name||'(sem nome)'); return; }
     const k=baseKey(rec.name); const cands=(k&&idx.get(k))||[];
     let o = cands.length===1 ? cands[0] : (cands.length>1 ? (cands.find(x=>String((x.characteristics[0]||{}).size||'')===String(rec.size))||cands[0]) : null);
-    if(!o){ o=mk.object(); o.objType='file'; o.identifiers[0]={type:'UUID',value:(self.crypto&&crypto.randomUUID)?crypto.randomUUID():('id-'+Math.random().toString(16).slice(2))}; o.originalName=rec.name||''; if(has(rec.size)) o.characteristics[0].size=String(rec.size); model.objects.push(o); created++; }
+    if(!o){ o=mk.object(); o.objType='file'; o.identifiers[0]={type:'UUID',value:(self.crypto&&crypto.randomUUID)?crypto.randomUUID():('id-'+Math.random().toString(16).slice(2))}; o.originalName=(prefix&&rec.name&&!/^objects\//.test(rec.name))?('objects/'+rec.name):(rec.name||''); if(has(rec.size)) o.characteristics[0].size=String(rec.size); model.objects.push(o); created++; }
     else if(!matched.has(o)){ matched.add(o); updated++; }
     const c=o.characteristics[0]; let f=c.formats[0]; if(!f){ f=mk.format(); c.formats=[f]; }
     if(has(rec.fmtName)) f.name=rec.fmtName;
@@ -2003,7 +2004,7 @@ async function runSiegfriedWasm(mode){
     const algo=(document.getElementById('ex_sha512')||{}).checked?'sha512':'sha256';
     for(const h of handles){ const out=await identify(h,'json',algo); const d=JSON.parse(out); if(!all.siegfried) all.siegfried=d.siegfried; if((!all.identifiers||!all.identifiers.length)&&d.identifiers) all.identifiers=d.identifiers; (d.files||[]).forEach(f=>all.files.push(f)); }
     if(!all.files.length){ msg.innerHTML='<div class="val-item warn"><span class="ico">!</span><span>Nenhum arquivo identificado na seleção.</span></div>'; return; }
-    const parsed=parseSiegfriedJSON(JSON.stringify(all)); const r=applyFormatId(parsed.recs, parsed.meta); renderModel(); renderOutput();
+    const parsed=parseSiegfriedJSON(JSON.stringify(all)); const prefix=(document.getElementById('ex_prefix')||{}).checked||false; const r=applyFormatId(parsed.recs, parsed.meta, {prefix}); renderModel(); renderOutput();
     msg.innerHTML=fmtIdReportHTML(r, parsed.meta);
   }catch(err){ msg.innerHTML=`<div class="val-item bad"><span class="ico">✕</span><span>Erro no Siegfried WASM: ${esc(err.message||String(err))}</span></div>`; }
 }
@@ -2290,11 +2291,14 @@ function recordsToObjects(recs,prefix){
 }
 function renderExtract(){
   document.getElementById('extractHost').innerHTML=`
-  <div class="import-zone">
-    <p style="margin:0 0 8px;font-size:12.5px"><strong>Extrair metadados no navegador</strong> — tudo local, nada é enviado. Calcula tamanho, fixity (hash) e identifica o formato por conteúdo, criando objects no modelo.</p>
-    <div class="btn-row" style="margin-bottom:8px"><button class="btn" id="pickExtract">escolher arquivos</button><button class="btn ghost" id="pickExtractDir">escolher pasta</button></div>
+  <div style="border:1px solid var(--line);border-radius:5px;padding:10px 12px;margin-bottom:12px;text-align:left">
+    <div style="font-size:11px;color:var(--ink-soft);margin-bottom:6px">Opções — valem para <strong>extrair metadados</strong> e <strong>Siegfried</strong> (abaixo):</div>
     <div class="chk"><input type="checkbox" id="ex_sha512"><label style="font-weight:400;margin:0" for="ex_sha512">usar SHA-512 (padrão: SHA-256)</label></div>
     <div class="chk"><input type="checkbox" id="ex_prefix" checked><label style="font-weight:400;margin:0" for="ex_prefix">prefixar originalName com objects/ (Archivematica)</label></div>
+  </div>
+  <div class="import-zone">
+    <p style="margin:0 0 8px;font-size:12.5px"><strong>Extrair metadados no navegador</strong> — tudo local, nada é enviado. Calcula tamanho, fixity (hash) e identifica o formato por conteúdo, criando objects no modelo.</p>
+    <div class="btn-row"><button class="btn" id="pickExtract">escolher arquivos</button><button class="btn ghost" id="pickExtractDir">escolher pasta</button></div>
     <input type="file" id="exFiles" multiple style="display:none"><input type="file" id="exDir" webkitdirectory style="display:none">
   </div>
   <div id="exResult"></div>
