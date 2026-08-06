@@ -1396,7 +1396,7 @@ function renderObjectForm(){
   (o.relationships||[]).forEach((rel,i)=>{
     const others = model.objects; // pode relacionar com qualquer objeto já no modelo
     h += `<div class="rep-item"><div class="rh"><span>relação ${i+1}</span><button class="rm-x" onclick="rmRep('relationships',${i})">×</button></div>
-      <div class="field-row">${fld('relationshipType','xsd',`rel_t_${i}`,rel.type,'ex.: structural, derivation','',true,'syncObj','relationshipType')}${fld('relationshipSubType','xsd',`rel_s_${i}`,rel.subType,'ex.: is part of','',true,'syncObj','relationshipSubType')}</div>
+      <div class="field-row">${fld('relationshipType','xsd',`rel_t_${i}`,rel.type,'ex.: structural, derivation','',true,'syncObj','relationshipType')}${fld('relationshipSubType','xsd',`rel_s_${i}`,rel.subType,'ex.: isPartOf','',true,'syncObj','relationshipSubType')}</div>
       <label style="font-size:11px;font-weight:600">relatedObjectIdentifier<span class="req">*</span> [1..n] — objetos do modelo · seq = ordem ${helpIcon('relatedObjectSequence')}</label>
       ${others.length? others.map(t=>`<div class="chk"><input type="checkbox" id="relo_${i}_${t.lid}" ${rel.relObjects.includes(t.lid)?'checked':''} onchange="syncObj()"><label style="font-weight:400;margin:0;flex:1" for="relo_${i}_${t.lid}">${t.lid} · ${esc(t.originalName||(t.identifiers[0]?t.identifiers[0].value:''))}</label><input type="number" min="1" class="seq-in" id="reloseq_${i}_${t.lid}" value="${esc(((rel.relObjSeq||{})[t.lid])||'')}" placeholder="seq" title="relatedObjectSequence — ordem" oninput="syncObj()"></div>`).join('') : '<div class="empty">Nenhum objeto no modelo ainda para relacionar.</div>'}
       <label style="font-size:11px;font-weight:600;margin-top:6px">relatedEventIdentifier [0..n]</label>
@@ -1855,7 +1855,7 @@ function renderImport(){
   </div>
   <div class="import-zone">
     <p style="margin:0 0 8px;font-size:12.5px"><strong>Importar CSV completo (documento PREMIS)</strong> — um único CSV com o documento inteiro. Coluna <code>entity</code> (object/event/agent/rights) por linha; colunas <code>ob./ev./ag./rt.</code> com subcampos por ponto; contêineres repetíveis = <strong>repetir a coluna</strong> (sem índice), na ordem hierárquica do PREMIS. Vira o <code>premis.xml</code> completo, com vínculos religados por identificador. Nada é enviado.</p>
-    <button class="btn" id="pickWideCsv">escolher CSV completo</button>
+    <div class="btn-row"><button class="btn" id="pickWideCsv">escolher CSV completo</button><button class="btn ghost" id="dlWideTpl">baixar modelo (CSV)</button></div>
     <input type="file" id="wideCsvFile" accept=".csv,.txt" style="display:none">
     <div id="wideCsvMsg" style="margin-top:8px"></div>
   </div>
@@ -1879,6 +1879,7 @@ function renderImport(){
   document.getElementById('xmlFile').onchange=handlePremisXMLFile;
   document.getElementById('pickWideCsv').onclick=()=>document.getElementById('wideCsvFile').click();
   document.getElementById('wideCsvFile').onchange=handlePremisCSVFile;
+  document.getElementById('dlWideTpl').onclick=downloadWideTemplate;
   document.getElementById('pickFile').onclick=()=>document.getElementById('impFile').click();
   document.getElementById('impFile').onchange=handleImport;
   document.getElementById('pickFmtId').onclick=()=>document.getElementById('fmtIdFile').click();
@@ -2379,6 +2380,64 @@ function handlePremisCSVFile(ev){
   };
   reader.readAsText(file);
 }
+/* modelo baixável que casa com o importador de CSV completo (mesmas colunas/ordem);
+   blocos repetíveis aparecem 2x (o 2º vazio) para mostrar como repetir; 1 linha de
+   exemplo por entidade, com vínculos que se resolvem entre si (round-trip válido). */
+function buildWideTemplateCSV(){
+  const OBJ=[
+    ['ob.objectIdentifierType','UUID'],['ob.objectIdentifierValue','uuid-0001'],
+    ['ob.xsi_type','premis:file'],
+    ['ob.significantPropertiesType','content'],['ob.significantPropertiesValue','conteúdo textual'],
+    ['ob.significantPropertiesType',''],['ob.significantPropertiesValue',''],
+    ['ob.compositionLevel','0'],
+    ['ob.messageDigestAlgorithm','SHA-256'],['ob.messageDigest','e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'],['ob.messageDigestOriginator',''],
+    ['ob.size','12345'],
+    ['ob.formatDesignation.formatName','PDF'],['ob.formatDesignation.formatVersion','1.7'],
+    ['ob.formatRegistry.formatRegistryName','PRONOM'],['ob.formatRegistry.formatRegistryKey','fmt/276'],
+    ['ob.creatingApplicationName','Exemplo App'],['ob.creatingApplicationVersion','1.0'],['ob.creatingApplication.dateCreatedByApplication','2024-01-01T10:00:00-03:00'],
+    ['ob.originalName','objects/exemplo.pdf'],
+    ['ob.storage.contentLocationType','URL'],['ob.storage.contentLocationValue','https://exemplo/doc'],
+    ['ob.signatureEncoding',''],['ob.signer',''],['ob.signatureMethod',''],['ob.signatureValue',''],['ob.signatureValidationRules',''],['ob.signatureProperties',''],
+    ['ob.relationshipType',''],['ob.relationshipSubType',''],['ob.relatedObjectIdentifierType',''],['ob.relatedObjectIdentifierValue',''],['ob.relatedEventIdentifierType',''],['ob.relatedEventIdentifierValue',''],
+    ['ob.relationshipType',''],['ob.relationshipSubType',''],['ob.relatedObjectIdentifierType',''],['ob.relatedObjectIdentifierValue',''],['ob.relatedEventIdentifierType',''],['ob.relatedEventIdentifierValue',''],
+    ['ob.linkingEventIdentifierType','eventID'],['ob.linkingEventIdentifierValue','ev-ingest-0001'],
+    ['ob.linkingEventIdentifierType',''],['ob.linkingEventIdentifierValue',''],
+  ];
+  const EV=[
+    ['ev.eventIdentifierType','eventID'],['ev.eventIdentifierValue','ev-ingest-0001'],
+    ['ev.eventType','ingestion'],['ev.eventDateTime','2024-01-02T09:00:00-03:00'],
+    ['ev.eventDetail','Ingestão do objeto no repositório'],
+    ['ev.eventOutcome','success'],['ev.eventOutcomeDetailNote','Concluído com sucesso'],
+    ['ev.linkingAgentIdentifierType','repositoryID'],['ev.linkingAgentIdentifierValue','REP'],['ev.linkingAgentRole','executor'],
+    ['ev.linkingAgentIdentifierType',''],['ev.linkingAgentIdentifierValue',''],['ev.linkingAgentRole',''],
+    ['ev.linkingObjectIdentifierType','UUID'],['ev.linkingObjectIdentifierValue','uuid-0001'],['ev.linkingObjectIdentifierRole','source'],
+    ['ev.linkingObjectIdentifierType',''],['ev.linkingObjectIdentifierValue',''],['ev.linkingObjectIdentifierRole',''],
+  ];
+  const AG=[
+    ['ag.agentIdentifierType','repositoryID'],['ag.agentIdentifierValue','REP'],['ag.agentName','Repositório Exemplo'],['ag.agentType','organization'],
+  ];
+  const RT=[
+    ['rt.rightsStatementIdentifierType','rightsID'],['rt.rightsStatementIdentifierValue','rights-0001'],
+    ['rt.rightsBasis','other'],
+    ['rt.otherRightsInformation.otherRightsBasis','institutional policy'],['rt.otherRightsInformation.otherRightsNote','Exemplo de nota de direitos'],
+    ['rt.rightsGranted.act','read'],['rt.rightsGranted.restriction','Acesso conforme política'],
+    ['rt.linkingObjectIdentifierType','UUID'],['rt.linkingObjectIdentifierValue','uuid-0001'],['rt.linkingObjectRole','subjectOfPolicy'],
+    ['rt.linkingAgentIdentifierType','repositoryID'],['rt.linkingAgentIdentifierValue','REP'],['rt.linkingAgentRole','rightsHolder'],
+    ['rt.linkingAgentIdentifierType',''],['rt.linkingAgentIdentifierValue',''],['rt.linkingAgentRole',''],
+  ];
+  const esc2=v=>{v=String(v==null?'':v); return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+  const blank=arr=>arr.map(()=>'');
+  const header=['entity',...OBJ.map(c=>c[0]),...EV.map(c=>c[0]),...AG.map(c=>c[0]),...RT.map(c=>c[0])];
+  const rows=[ header,
+    ['object',...OBJ.map(c=>c[1]),...blank(EV),...blank(AG),...blank(RT)],
+    ['event', ...blank(OBJ),...EV.map(c=>c[1]),...blank(AG),...blank(RT)],
+    ['agent', ...blank(OBJ),...blank(EV),...AG.map(c=>c[1]),...blank(RT)],
+    ['rights',...blank(OBJ),...blank(EV),...blank(AG),...RT.map(c=>c[1])],
+  ];
+  return rows.map(r=>r.map(esc2).join(','))
+             .join('\n')+'\n';
+}
+function downloadWideTemplate(){ download('template-premis-completo.csv', buildWideTemplateCSV(), 'text/csv'); }
 function downloadTemplate(fmt){
   const cols=(SEMUNITS[currentEnt]||[]).filter(u=>u!=='—');
   const ex={object:{idType:'UUID',idValue:'5b2c8d1e-0000-4aaa-bbbb-1234567890ab',formatName:'MP3',originalName:'objects/bird.mp3'},

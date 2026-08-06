@@ -50,6 +50,10 @@ Um **único CSV** com o documento PREMIS inteiro — para quem já tem os metada
 planilha e quer o `premis.xml` de uma vez. Em **Origem → importar arquivo**, use
 **escolher CSV completo**. Nada é enviado; a montagem e a validação rodam no navegador.
 
+> **Comece pelo modelo:** o botão **baixar modelo (CSV)** gera um `template-premis-completo.csv`
+> com todas as colunas na ordem certa (blocos repetíveis aparecem 2×, o 2º vazio, para mostrar
+> como repetir) e uma linha de exemplo por entidade — abra numa planilha e substitua pelos seus dados.
+
 **Convenções do template:**
 - **1 linha = 1 entidade.** A 1ª coluna, `entity`, diz o tipo: `object`, `event`,
   `agent` ou `rights`.
