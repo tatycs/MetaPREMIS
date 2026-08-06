@@ -109,6 +109,19 @@ o relatório (**seção 4**). Arquivos muito grandes são lidos inteiros na mem�
 > **maior** das duas (ISO 32000-1 §7.5.2), mapeando ao PUID correto. Ainda assim, para
 > identificação autoritativa, o Siegfried/DROID (seção 4) é a referência.
 
+### Identificar com o Siegfried **no navegador** (sem instalar nada) — Chrome/Edge
+
+No mesmo painel **extrair metadados** há também **“Siegfried: escolher pasta / arquivos”**.
+Isso roda o **Siegfried oficial em WebAssembly** dentro da própria página (base **PRONOM
+completa**, embutida) — **sem instalar nada e sem enviar arquivos**. Preenche o
+`formatRegistry` (PUID/nome/versão) nos objects e **preserva a fixidez**. Requer **Chrome ou
+Edge** (usa a File System Access API) e baixa ~8&nbsp;MB do WASM só na 1ª vez. No
+Firefox/Safari, use a identificação embutida ou a importação de `sf.json`/CSV (seção 4).
+
+> **Para a oficina:** é o caminho mais simples para o aluno — abre o site, clica em
+> *extrair metadados* (fixidez + tamanho) e depois em *Siegfried: escolher pasta* (formato
+> PRONOM autoritativo), tudo no navegador, sem instalação.
+
 ## 4. Importar identificação de formato (Siegfried / DROID) — PRONOM completo
 
 Para identificação de formato **de produção** (base PRONOM completa e autoritativa), rode
