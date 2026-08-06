@@ -2469,12 +2469,12 @@ function detectFormat(b,name){
   if(isText){ if(ext==='csv') return {name:'Comma-Separated Values (CSV)',version:'',mime:'text/csv',puid:''}; return {name:'Plain Text',version:'',mime:'text/plain',puid:'x-fmt/111'}; }
   return {name:ext?ext.toUpperCase():'',version:'',mime:'',puid:''};
 }
-async function extractOne(file,algo){
+async function extractOne(file,algo,relPath){
   const buf=await file.arrayBuffer(); const u8=new Uint8Array(buf);
   const fmt=detectFormat(u8,file.name);
   const hb=await crypto.subtle.digest(algo,buf);
   const sha=[...new Uint8Array(hb)].map(x=>x.toString(16).padStart(2,'0')).join('');
-  return {name:file.name,path:file.webkitRelativePath||file.name,size:file.size,sha,algo,fmt};
+  return {name:file.name,path:relPath||file.webkitRelativePath||file.name,size:file.size,sha,algo,fmt};
 }
 function recordsToObjects(recs,prefix){
   recs.forEach(r=>{
@@ -2509,28 +2509,54 @@ function renderExtract(){
     <div id="sfWasmMsg" style="margin-top:8px"></div>
   </div>
   <p class="hint"><strong>Identificação embutida (aproximada)</strong>, por conteúdo: PDF, PNG, JPEG/JFIF, TIFF, BMP, GIF, MP3, WAV, XML, texto e Office/ODF/EPUB (via ZIP). O PUID e a versão são estimados — para identificação <strong>autoritativa</strong> do PRONOM, rode DROID/Siegfried local e importe (<a href="https://github.com/tatycs/oficina-premis/blob/main/docs/IMPORTACAO.md" target="_blank" rel="noopener">seção 4 do tutorial</a>).</p>`;
-  document.getElementById('pickExtract').onclick=()=>document.getElementById('exFiles').click();
-  document.getElementById('pickExtractDir').onclick=()=>document.getElementById('exDir').click();
+  document.getElementById('pickExtract').onclick=()=>pickExtractFS('files');
+  document.getElementById('pickExtractDir').onclick=()=>pickExtractFS('dir');
   document.getElementById('exFiles').onchange=handleExtract;
   document.getElementById('exDir').onchange=handleExtract;
   const sfd=document.getElementById('sfWasmDir'); if(sfd) sfd.onclick=()=>runSiegfriedWasm('dir');
   const sff=document.getElementById('sfWasmFiles'); if(sff) sff.onclick=()=>runSiegfriedWasm('files');
 }
-async function handleExtract(ev){
-  const files=[...ev.target.files]; if(!files.length) return;
+/* Chrome/Edge: usa a File System Access API (sem o aviso "Fazer upload de N arquivos"),
+   igual ao Siegfried; Firefox/Safari: cai no <input> escondido. Mesmo motor nos dois. */
+async function pickExtractFS(mode){
+  const host=document.getElementById('exResult');
+  if(mode==='dir'){ if(!window.showDirectoryPicker){ document.getElementById('exDir').click(); return; } }
+  else { if(!window.showOpenFilePicker){ document.getElementById('exFiles').click(); return; } }
+  let items=[];
+  try{
+    if(mode==='dir'){ const dh=await window.showDirectoryPicker(); items=await collectDirFiles(dh, dh.name||'objects'); }
+    else { const hs=await window.showOpenFilePicker({multiple:true}); for(const h of hs){ items.push({file:await h.getFile(), path:h.name}); } }
+  }catch(err){ if(err&&err.name==='AbortError') return; if(host) host.innerHTML=`<div class="val-item warn"><span class="ico">!</span><span>${esc((err&&err.message)||String(err))}</span></div>`; return; }
+  runExtractItems(items);
+}
+async function collectDirFiles(dirHandle, prefix){
+  const out=[];
+  for await (const entry of dirHandle.values()){
+    const p = prefix?prefix+'/'+entry.name:entry.name;
+    if(entry.kind==='file'){ try{ out.push({file:await entry.getFile(), path:p}); }catch(e){} }
+    else if(entry.kind==='directory'){ const sub=await collectDirFiles(entry, p); for(const s of sub) out.push(s); }
+  }
+  return out;
+}
+function handleExtract(ev){
+  const items=[...ev.target.files].map(f=>({file:f, path:f.webkitRelativePath||f.name}));
+  ev.target.value='';
+  runExtractItems(items);
+}
+async function runExtractItems(items){
+  if(!items||!items.length) return;
   const algo=(document.getElementById('ex_sha512')||{}).checked?'SHA-512':'SHA-256';
   const prefix=(document.getElementById('ex_prefix')||{}).checked||false;
   const host=document.getElementById('exResult');
-  host.innerHTML=`<div class="val-item info"><span class="ico">…</span><span>processando ${files.length} arquivo(s)…</span></div>`;
+  host.innerHTML=`<div class="val-item info"><span class="ico">…</span><span>processando ${items.length} arquivo(s)…</span></div>`;
   const recs=[];
-  for(const f of files){ try{ recs.push(await extractOne(f,algo)); }catch(err){ recs.push({name:f.name,size:f.size,error:(err&&err.message)||String(err)}); } }
+  for(const it of items){ try{ recs.push(await extractOne(it.file,algo,it.path)); }catch(err){ recs.push({name:it.file.name,size:it.file.size,error:(err&&err.message)||String(err)}); } }
   const ok=recs.filter(r=>!r.error), errs=recs.filter(r=>r.error);
   recordsToObjects(ok,prefix);   /* aplica direto ao modelo (sem passo extra), igual ao Siegfried */
   const withPuid=ok.filter(r=>r.fmt&&r.fmt.puid).length;
   let h=`<div class="val-item ok"><span class="ico">✓</span><span><strong>${ok.length}</strong> object(s) adicionado(s) ao modelo · ${algo} · ${withPuid} com PUID (PRONOM). Edite pelos cards/abas.</span></div>`;
   if(errs.length) h+=`<div class="val-item warn"><span class="ico">!</span><span>${errs.length} arquivo(s) não lido(s): ${esc(errs.slice(0,6).map(e=>e.name).join(', '))}${errs.length>6?'…':''}.</span></div>`;
   host.innerHTML=h;
-  ev.target.value='';
 }
 
 /* =================================================================
