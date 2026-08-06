@@ -2323,12 +2323,12 @@ async function handleExtract(ev){
   host.innerHTML=`<div class="val-item info"><span class="ico">…</span><span>processando ${files.length} arquivo(s)…</span></div>`;
   const recs=[];
   for(const f of files){ try{ recs.push(await extractOne(f,algo)); }catch(err){ recs.push({name:f.name,size:f.size,error:(err&&err.message)||String(err)}); } }
-  const ok=recs.filter(r=>!r.error);
-  let h=`<div class="val-head">${recs.length} arquivo(s) lido(s) · ${algo}</div><div style="max-height:240px;overflow:auto">`;
-  recs.forEach(r=>{ h+=`<div class="card"><span class="ctitle">${esc(r.name)}</span><div class="cmeta">${r.error?('erro: '+esc(r.error)):`${r.size} bytes · ${esc(r.fmt.name||'formato não identificado')}${r.fmt.puid?(' · '+esc(r.fmt.puid)):''} · <span style="font-family:var(--mono);font-size:10px">${esc((r.sha||'').slice(0,16))}…</span>`}</div></div>`; });
-  h+=`</div><div class="btn-row"><button class="btn amber" id="btnAddExtract">adicionar ${ok.length} object(s) ao modelo</button></div>`;
+  const ok=recs.filter(r=>!r.error), errs=recs.filter(r=>r.error);
+  recordsToObjects(ok,prefix);   /* aplica direto ao modelo (sem passo extra), igual ao Siegfried */
+  const withPuid=ok.filter(r=>r.fmt&&r.fmt.puid).length;
+  let h=`<div class="val-item ok"><span class="ico">✓</span><span><strong>${ok.length}</strong> object(s) adicionado(s) ao modelo · ${algo} · ${withPuid} com PUID (PRONOM). Edite pelos cards/abas.</span></div>`;
+  if(errs.length) h+=`<div class="val-item warn"><span class="ico">!</span><span>${errs.length} arquivo(s) não lido(s): ${esc(errs.slice(0,6).map(e=>e.name).join(', '))}${errs.length>6?'…':''}.</span></div>`;
   host.innerHTML=h;
-  document.getElementById('btnAddExtract').onclick=()=>{ recordsToObjects(ok,prefix); host.innerHTML=`<div class="val-item ok"><span class="ico">✓</span><span>${ok.length} object(s) adicionado(s) — edite pelos cards/abas.</span></div>`; };
   ev.target.value='';
 }
 
