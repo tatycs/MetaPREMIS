@@ -1,4 +1,4 @@
-# Conjunto de regras de validação — Oficina PREMIS
+# Conjunto de regras de validação — MetaPremis
 
 Documento de referência das regras aplicadas pelo validador, com a fonte de cada uma.
 Três camadas independentes, conforme discutido: validade de schema (XSD), conformidade

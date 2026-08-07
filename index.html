@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  Oficina PREMIS — construtor de premis.xml
+  MetaPremis — construtor de premis.xml
   Copyright (C) 2026 Tatiana Canelhas
   Licenciado sob a GNU Affero General Public License v3.0 (AGPL-3.0) — ver LICENSE.
   Distribuído SEM GARANTIA. Terceiros: vendor/xmllint-wasm/ é MIT (ver seu COPYING).
@@ -9,7 +9,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Oficina PREMIS — construtor de premis.xml</title>
+<title>MetaPremis — construtor de premis.xml</title>
 <style>
   :root{
     --paper:#eceae3; --paper-2:#f5f3ec; --ink:#1b2a36; --ink-soft:#3d5163;
@@ -217,7 +217,7 @@
 <body>
 <header class="bench">
   <div class="brand">
-    <h1>Oficina PREMIS</h1>
+    <h1>MetaPremis</h1>
     <span class="tag">v0 · fase 2</span>
     <span class="sub">object · event · agent · rights</span>
   </div>
@@ -2805,7 +2805,7 @@ function bind(){
     /* senão: relatório mostrado nos painéis; download não acontece */
   };
   document.getElementById('btnVerify').onclick=()=>verifyIntegrity();
-  document.getElementById('btnState').onclick=()=>{if(currentEnt==='object')syncObj();else if(currentEnt==='event')syncEvt();else if(currentEnt==='rights')syncRgt();else syncAgt();download('oficina-premis-trabalho.json',JSON.stringify({model,lidCounter},null,2),'application/json');};
+  document.getElementById('btnState').onclick=()=>{if(currentEnt==='object')syncObj();else if(currentEnt==='event')syncEvt();else if(currentEnt==='rights')syncRgt();else syncAgt();download('metapremis-trabalho.json',JSON.stringify({model,lidCounter},null,2),'application/json');};
   document.getElementById('btnLoad').onclick=()=>document.getElementById('stateFile').click();
   document.getElementById('stateFile').onchange=ev=>{const f=ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{try{const data=JSON.parse(e.target.result);Object.assign(model,{objects:[],events:[],agents:[],rights:[],relationships:[]},data.model);lidCounter=data.lidCounter||1;objDraft=mk.object();evtDraft=mk.event();agtDraft=mk.agent();rgtDraft=null;renderForm();renderModel();renderOutput();}catch(err){alert('Arquivo inválido: '+err.message);}};r.readAsText(f);};
 }

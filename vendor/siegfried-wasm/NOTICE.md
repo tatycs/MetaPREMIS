@@ -9,7 +9,7 @@ por Richard Lehane. As assinaturas do **PRONOM** já vêm **embutidas** no `sf.w
 - Licença do Siegfried: **Apache License 2.0**
 - `wasm_exec.js`: runtime Go (Google; licença BSD), distribuído junto com o build.
 
-Uso na Oficina PREMIS: identificação de formato **no navegador** (PRONOM completo), via a
+Uso no MetaPremis: identificação de formato **no navegador** (PRONOM completo), via a
 API `identify(handle, "json")` exposta pelo WASM. **Nada é enviado** — o WASM roda
 localmente na página e lê os arquivos pela File System Access API (Chrome/Edge).
 Carregado **sob demanda** (só ao clicar), para não pesar o carregamento normal do app.

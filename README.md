@@ -1,4 +1,4 @@
-# Oficina PREMIS — construtor de `premis.xml`
+# MetaPremis — construtor de `premis.xml`
 
 Ferramenta de aula para construir documentos **PREMIS 3.0** a partir de metadados de
 sistemas produtores. Roda inteiramente no navegador (nada sai da máquina), em dois
