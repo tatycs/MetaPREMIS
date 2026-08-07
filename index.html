@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!--
-  MetaPremis — construtor de premis.xml
+  MetaPREMIS — construtor de premis.xml
   Copyright (C) 2026 Tatiana Canelhas
   Licenciado sob a GNU Affero General Public License v3.0 (AGPL-3.0) — ver LICENSE.
   Distribuído SEM GARANTIA. Terceiros: vendor/xmllint-wasm/ é MIT (ver seu COPYING).
@@ -9,7 +9,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MetaPremis — construtor de premis.xml</title>
+<title>MetaPREMIS — construtor de premis.xml</title>
 <style>
   :root{
     --paper:#eceae3; --paper-2:#f5f3ec; --ink:#1b2a36; --ink-soft:#3d5163;
@@ -217,7 +217,7 @@
 <body>
 <header class="bench">
   <div class="brand">
-    <h1>MetaPremis</h1>
+    <h1>MetaPREMIS</h1>
     <span class="tag">v0 · fase 2</span>
     <span class="sub">object · event · agent · rights</span>
   </div>
@@ -1874,7 +1874,7 @@ function renderImport(){
     <div id="fmtIdMsg" style="margin-top:8px"></div>
   </div>
   <div id="mapHost"></div>
-  <p class="hint">Tutorial: <a href="https://github.com/tatycs/oficina-premis/blob/main/docs/IMPORTACAO.md" target="_blank" rel="noopener">como importar (docs/IMPORTACAO.md)</a>. CSV/JSON cria entidades com campos básicos; a estrutura completa é montada/editada no formulário.</p>`;
+  <p class="hint"><a href="https://github.com/tatycs/MetaPREMIS/blob/main/MANUAL.md" target="_blank" rel="noopener"><strong>Manual completo</strong></a> · Tutorial de importação: <a href="https://github.com/tatycs/MetaPREMIS/blob/main/docs/IMPORTACAO.md" target="_blank" rel="noopener">docs/IMPORTACAO.md</a>. CSV/JSON cria entidades com campos básicos; a estrutura completa é montada/editada no formulário.</p>`;
   document.getElementById('pickXml').onclick=()=>document.getElementById('xmlFile').click();
   document.getElementById('xmlFile').onchange=handlePremisXMLFile;
   document.getElementById('pickWideCsv').onclick=()=>document.getElementById('wideCsvFile').click();
@@ -2567,7 +2567,7 @@ function renderExtract(){
     <div class="btn-row"><button class="btn" id="sfWasmDir">Siegfried: escolher pasta</button><button class="btn ghost" id="sfWasmFiles">escolher arquivos</button></div>
     <div id="sfWasmMsg" style="margin-top:8px"></div>
   </div>
-  <p class="hint"><strong>Identificação embutida (aproximada)</strong>, por conteúdo: PDF, PNG, JPEG/JFIF, TIFF, BMP, GIF, MP3, WAV, XML, texto e Office/ODF/EPUB (via ZIP). O PUID e a versão são estimados — para identificação <strong>autoritativa</strong> do PRONOM, rode DROID/Siegfried local e importe (<a href="https://github.com/tatycs/oficina-premis/blob/main/docs/IMPORTACAO.md" target="_blank" rel="noopener">seção 4 do tutorial</a>).</p>`;
+  <p class="hint"><strong>Identificação embutida (aproximada)</strong>, por conteúdo: PDF, PNG, JPEG/JFIF, TIFF, BMP, GIF, MP3, WAV, XML, texto e Office/ODF/EPUB (via ZIP). O PUID e a versão são estimados — para identificação <strong>autoritativa</strong> do PRONOM, rode DROID/Siegfried local e importe (<a href="https://github.com/tatycs/MetaPREMIS/blob/main/docs/IMPORTACAO.md" target="_blank" rel="noopener">seção 4 do tutorial</a>).</p>`;
   document.getElementById('pickExtract').onclick=()=>pickExtractFS('files');
   document.getElementById('pickExtractDir').onclick=()=>pickExtractFS('dir');
   document.getElementById('exFiles').onchange=handleExtract;

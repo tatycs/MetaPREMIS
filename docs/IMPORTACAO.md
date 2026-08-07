@@ -1,4 +1,4 @@
-# Importação no MetaPremis
+# Importação no MetaPREMIS
 
 O painel **Origem** tem, além do **formulário**, dois modos de entrada por arquivo:
 **importar arquivo** (um `premis.xml` inteiro para edição, ou **CSV/JSON** em lote) e

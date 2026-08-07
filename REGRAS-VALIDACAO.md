@@ -1,4 +1,4 @@
-# Conjunto de regras de validação — MetaPremis
+# Conjunto de regras de validação — MetaPREMIS
 
 Documento de referência das regras aplicadas pelo validador, com a fonte de cada uma.
 Três camadas independentes, conforme discutido: validade de schema (XSD), conformidade

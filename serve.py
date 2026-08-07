@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# MetaPremis — Copyright (C) 2026 Tatiana Canelhas — AGPL-3.0 (ver LICENSE).
+# MetaPREMIS — Copyright (C) 2026 Tatiana Canelhas — AGPL-3.0 (ver LICENSE).
 """
-Servidor de desenvolvimento do MetaPremis.
+Servidor de desenvolvimento do MetaPREMIS.
 
 Por que existe: o validador XSD embarcado (xmllint-wasm) usa módulo ES + Web
 Worker (type:module) + WebAssembly e um fetch do premis-v3-0.xsd. Nada disso
@@ -42,7 +42,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 if __name__ == "__main__":
     httpd = http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    print("MetaPremis — servindo %s" % ROOT)
+    print("MetaPREMIS — servindo %s" % ROOT)
     print("  http://127.0.0.1:%d/premis-builder.html" % PORT)
     print("Ctrl+C para parar.")
     httpd.serve_forever()

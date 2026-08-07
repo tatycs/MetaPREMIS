@@ -1,4 +1,4 @@
-# MetaPremis — construtor de `premis.xml`
+# MetaPREMIS — construtor de `premis.xml`
 
 Ferramenta de aula para construir documentos **PREMIS 3.0** a partir de metadados de
 sistemas produtores. Roda inteiramente no navegador (nada sai da máquina), em dois
@@ -70,7 +70,7 @@ Distribuído sob a **GNU Affero General Public License v3.0 (AGPL-3.0)** — vej
 [LICENSE](LICENSE). Copyright © 2026 Tatiana Canelhas. Distribuído sem garantia.
 
 Como é uma aplicação que roda em rede (servida pelo GitHub Pages), a AGPL pede que os
-usuários tenham acesso ao código-fonte — ele está em https://github.com/tatycs/oficina-premis.
+usuários tenham acesso ao código-fonte — ele está em https://github.com/tatycs/MetaPREMIS.
 
 ### Terceiros
 `vendor/xmllint-wasm/` é uma porta de libxml2 para WebAssembly, sob licença **MIT**
