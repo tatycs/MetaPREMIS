@@ -277,8 +277,8 @@
     <p class="lede">O premis.xml gerado a partir do modelo, em dois perfis. A validação roda antes da exportação, com a fonte de cada regra.</p>
 
     <div class="profile-switch">
-      <button class="on" data-profile="archivematica">perfil Archivematica</button>
-      <button data-profile="full">PREMIS 3.0 completo</button>
+      <button data-profile="archivematica">perfil Archivematica</button>
+      <button class="on" data-profile="full">PREMIS 3.0 completo</button>
     </div>
 
     <div id="verdictHost"></div>
@@ -979,7 +979,7 @@ function validate(profile){
 /* =================================================================
    INTERFACE
    ================================================================= */
-let currentEnt='object', currentProfile='archivematica', inputMode='form';
+let currentEnt='object', currentProfile='full', inputMode='form';
 let objDraft = mk.object();
 let evtDraft = mk.event();
 let agtDraft = mk.agent();
