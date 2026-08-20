@@ -1727,7 +1727,11 @@ function renderForm(){
 }
 
 /* ---- modelo ---- */
-/* hierarquia das relações structural entre objetos (has part / is part of, includes / is included in) */
+/* hierarquia das relações structural, conforme o vocabulário oficial relationshipSubType
+   (id.loc.gov/vocabulary/preservation/relationshipSubType):
+     relacionado é o pai (o objeto é o filho):  isPartOf, isIncludedIn, represents
+     o objeto é o pai (relacionado é o filho):   hasPart, includes, isRepresentedBy, hasRoot
+     hasSibling não é contenção (mesmo pai) → não gera aresta; subtipo desconhecido → o = pai. */
 function buildStructuralEdges(){
   const childrenOf=new Map(); const isChild=new Set();
   const exists=lid=>model.objects.some(o=>o.lid===lid);
@@ -1736,9 +1740,10 @@ function buildStructuralEdges(){
     (o.relationships||[]).forEach(rel=>{
       if(!/structural/i.test(rel.type||'')) return;
       const sub=(rel.subType||'').toLowerCase().replace(/[^a-z]/g,'');
+      if(sub==='hassibling') return;   /* irmãos: mesmo pai, não é contenção — não gera aresta */
       (rel.relObjects||[]).forEach(t=>{
-        if(sub==='ispartof'||sub==='isincludedin'||sub==='isrootof') add(t, o.lid, rel.subType||'');   /* o é parte de t → t é pai (is part of / isIncludedIn / …) */
-        else add(o.lid, t, rel.subType||'', (rel.relObjSeq||{})[t]);                                    /* o contém t (has part / includes / …) — ordena por relatedObjectSequence */
+        if(sub==='ispartof'||sub==='isincludedin'||sub==='represents') add(t, o.lid, rel.subType||'', (rel.relObjSeq||{})[t]);   /* relacionado é o pai (o objeto é filho) */
+        else add(o.lid, t, rel.subType||'', (rel.relObjSeq||{})[t]);                                                             /* o objeto é o pai (hasPart/includes/isRepresentedBy/hasRoot/…) — ordena por relatedObjectSequence */
       });
     });
   });
