@@ -1793,6 +1793,14 @@ function renderModel(){
     const ags=(r.linkAgents||[]).map(agLid=>agentNode(agLid,'')).filter(Boolean).join('');
     if(ags) h+=`<div class="tchildren">${ags}</div>`;
     return h+`</div>`; };
+  const envNode=o=>{ const fns=o.envFunctions||[],des=o.envDesignations||[],regs=o.envRegistries||[],exts=o.envExts||[];
+    let kids='';
+    des.forEach(d=>{ if(has(d.name)||has(d.version)||has(d.origin)) kids+=`<div class="tnode"><div class="tlabel"><span class="tico">🖥</span><span class="ctitle">${esc(d.name||'(ambiente)')}</span>${has(d.version)?` <span class="tedge">${esc(d.version)}</span>`:''}${has(d.origin)?` <span class="tedge">${esc(d.origin)}</span>`:''}</div></div>`; });
+    fns.forEach(f=>{ if(has(f.fType)||has(f.fLevel)) kids+=`<div class="tnode"><div class="tlabel"><span class="tico">⚙</span><span class="ctitle">função: ${esc(f.fType||'')}</span>${has(f.fLevel)?` <span class="tedge">nível ${esc(f.fLevel)}</span>`:''}</div></div>`; });
+    regs.forEach(rg=>{ if(has(rg.name)||has(rg.key)) kids+=`<div class="tnode"><div class="tlabel"><span class="tico">🗂</span><span class="ctitle">registro: ${esc(rg.name||'')}</span>${has(rg.key)?` <span class="tedge">${esc(rg.key)}</span>`:''}${has(rg.role)?` <span class="tedge">${esc(rg.role)}</span>`:''}</div></div>`; });
+    if(exts.length) kids+=`<div class="tnode"><div class="tlabel"><span class="tico">🧩</span><span class="ctitle">extensão de environment</span> <span class="tedge">${exts.length}</span></div></div>`;
+    if(!kids) return '';
+    return `<div class="tnode"><div class="tlabel"><span class="tico">🖥</span><span class="ctitle">environment</span><button class="tbtn-ed" onclick="editEnt('objects','${o.lid}')">editar</button></div><div class="tchildren">${kids}</div></div>`; };
   const eventsOf=o=>model.events.filter(e=>(o.linkEvents||[]).includes(e.lid)||(e.linkObjects||[]).some(lo=>lo.objectLid===o.lid))
     .sort((a,b)=>String(a.dateTime||'~').localeCompare(String(b.dateTime||'~')));
   const rightsOf=o=>model.rights.filter(r=>(o.linkRights||[]).includes(r.lid)||(r.linkObjects||[]).includes(o.lid));
@@ -1802,6 +1810,7 @@ function renderModel(){
     let h=`<div class="tnode"><div class="tlabel"><span class="cid">${lid}</span> <span class="src xsd" style="margin:0 3px">${t}</span> <span class="ctitle">${title}</span>${sub?` <span class="tedge">${esc(sub)}</span>`:''}${cyc?` <span class="tedge bad">ciclo</span>`:''}${btns('objects',lid)}</div>`;
     if(!cyc){ let kids='';
       (ed.childrenOf.get(lid)||[]).forEach(k=>kids+=objNode(k.lid,k.subType,anc.concat(lid)));
+      kids+=envNode(o);
       eventsOf(o).forEach(e=>kids+=eventNode(e));
       rightsOf(o).forEach(r=>kids+=rightNode(r));
       if(kids) h+=`<div class="tchildren">${kids}</div>`;
@@ -2130,10 +2139,11 @@ function parsePremisXML(xmlString){
   });
 
   xCh(root,'rights').forEach(rel=>{
-    const st=xC1(rel,'rightsStatement');
     const rexts=xCh(rel,'rightsExtension').map(el=>({a:xAttrs(el),x:xRawInner(el)})).filter(it=>it.x||it.a);
-    if(!st && !rexts.length) return;
-    const r=mk.right(); r.lid=nlid('rgt'); r.exts=rexts;
+    const stmts=xCh(rel,'rightsStatement');   /* um <rights> pode conter vários <rightsStatement> — lê todos */
+    if(!stmts.length && !rexts.length) return;
+    (stmts.length?stmts:[null]).forEach((st,si)=>{
+    const r=mk.right(); r.lid=nlid('rgt'); r.exts=si===0?rexts:[];
     const idEl=xC1(st,'rightsStatementIdentifier'); r.idType=idEl?xT(idEl,'rightsStatementIdentifierType'):''; r.idValue=idEl?xT(idEl,'rightsStatementIdentifierValue'):'';
     r.basis=xT(st,'rightsBasis')||'copyright';
     const cp=xC1(st,'copyrightInformation');
@@ -2149,6 +2159,7 @@ function parsePremisXML(xmlString){
     r._la=xCh(st,'linkingAgentIdentifier').map(x=>xTV(x,'linkingAgentIdentifierType','linkingAgentIdentifierValue'));
     r.linkObjects=[]; r.linkAgents=[];
     m.rights.push(r);
+    });
   });
 
   /* resolução de vínculos: (type,value) -> lid */
