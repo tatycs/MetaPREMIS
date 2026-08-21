@@ -1924,6 +1924,62 @@ function applyMapping(){const mapping={};importedKeys.forEach((k,i)=>{const v=do
 
 function download(filename,text,mime){const blob=new Blob([text],{type:mime||'text/plain'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(a.href);}
 
+/* ===== Evento de identificacao de formato (PREMIS Event + Agent) =====
+   O formatNote diz COM BASE EM QUE; o Event diz QUEM identificou, QUANDO e com
+   QUE VERSAO. Data Dictionary 3.0: eventDetail (2.4.1) tem como exemplo publicado
+   Program="MIGJP2JP2K"; version="2.2"; linkingAgentRole (2.6.3) traz
+   "executing program"; agentType (3.3) traz "software"; eventOutcome (2.5.1) e
+   vocabulario local ("there is no general one available") — usamos o mesmo
+   "Positive" que o Archivematica grava no AIP, com o PUID no detailNote. */
+function isoLocal(d){
+  const p=n=>String(n).padStart(2,'0');
+  const off=-d.getTimezoneOffset(), sg=off<0?'-':'+', a=Math.abs(off);
+  return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+'T'+
+         p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())+
+         sg+p(Math.floor(a/60))+':'+p(a%60);
+}
+function newUUID(){ return (self.crypto&&crypto.randomUUID)?crypto.randomUUID():('id-'+Math.random().toString(16).slice(2)); }
+function wantIdEvent(){ const c=document.getElementById('ex_event'); return c?!!c.checked:true; }
+/* Agente de software da ferramenta, reaproveitado entre importacoes. */
+function ensureSoftwareAgent(nome, versao){
+  const alvo=(String(nome||'')+(has(versao)?(' '+versao):'')).trim();
+  let a=model.agents.find(x=>x.agentType==='software'&&(x.names||[]).some(n=>String(n.value||'').trim()===alvo));
+  if(a) return a;
+  a=mk.agent();
+  a.identifiers[0]={type:'local', value:alvo.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'')};
+  a.names.push({value:alvo});
+  a.agentType='software';
+  if(has(versao)) a.agentVersion=String(versao);
+  model.agents.push(a);
+  return a;
+}
+/* Um evento de identificacao por object E por ferramenta. Reimportar pela mesma
+   ferramenta nao cria outro evento nem mexe no que ja esta la — o resultado de
+   uma nova identificacao, se divergir, ja fica registrado nos <format>.
+   Ferramentas diferentes geram eventos diferentes, porque sao acoes diferentes.
+   Vinculo so no sentido evento -> object/agent: a norma nao prescreve direcao
+   (2.6, usage notes) e a arvore do MODELO ja le os dois sentidos. */
+function addFormatIdEvent(o, meta, puids){
+  const nome=meta.tool||'MetaPREMIS';
+  const ag=ensureSoftwareAgent(nome, meta.version||'');
+  const jaTem=model.events.find(x=>x.eventType==='format identification'
+    && (x.linkObjects||[]).some(lo=>lo.objectLid===o.lid)
+    && (x.linkAgents||[]).some(la=>la.agentLid===ag.lid));
+  if(jaTem) return null;
+  const e=mk.event();
+  e.idType='UUID'; e.idValue=newUUID();
+  e.eventType='format identification';
+  e.dateTime=isoLocal(new Date());
+  let det='program="'+nome+'"';
+  if(has(meta.version)) det+='; version="'+meta.version+'"';
+  if(has(meta.sig)) det+='; PRONOM '+meta.sig;
+  e.details.push({detail:det, exts:[]});
+  e.outcomes.push({outcome:'Positive', detailNote:(puids||[]).filter(has).join('; '), exts:[]});
+  e.linkAgents.push({agentLid:ag.lid, role:'executing program'});
+  e.linkObjects.push({objectLid:o.lid, role:''});
+  model.events.push(e);
+  return e;
+}
 /* ===================================================================
    Importar identificação de formato (Siegfried / DROID) — PRONOM completo.
    O usuário roda a ferramenta LOCAL e importa a saída; preenchemos o
@@ -2020,19 +2076,19 @@ function parseSiegfriedJSON(txt){
   const d=JSON.parse(txt);
   if(!d||!Array.isArray(d.files)) throw new Error('não parece Siegfried JSON (sem "files").');
   const sig=(d.identifiers&&d.identifiers[0]&&d.identifiers[0].details)||d.signature||'';
-  const recs=(d.files||[]).map(f=>{ const ms=(f.matches||[]).filter(m=>m&&m.id&&m.id!=='UNKNOWN'); const b=ms[0]||{}; const ck=sfChecksum(f); return { name:f.filename||'', size:(f.filesize!=null?String(f.filesize):''), puid:b.id||'', fmtName:b.format||'', version:b.version||'', mime:b.mime||'', basis:b.basis||'', warning:b.warning||'', checksum:ck.digest, checksumAlgo:ck.algo, others:ms.slice(1).map(m=>`${m.id} ${m.format||''}`.trim()) }; });
+  const recs=(d.files||[]).map(f=>{ const ms=(f.matches||[]).filter(m=>m&&m.id&&m.id!=='UNKNOWN'); const b=ms[0]||{}; const ck=sfChecksum(f); return { name:f.filename||'', size:(f.filesize!=null?String(f.filesize):''), puid:b.id||'', fmtName:b.format||'', version:b.version||'', mime:b.mime||'', basis:b.basis||'', warning:b.warning||'', checksum:ck.digest, checksumAlgo:ck.algo, others:ms.slice(1).map(m=>({puid:m.id||'', fmtName:m.format||'', version:m.version||'', basis:m.basis||'', warning:m.warning||''})) }; });
   return {recs, meta:{tool:'Siegfried', version:d.siegfried||'', sig:sig}};
 }
 function parseSiegfriedCSV(txt){
   const {rows}=parseCSVtable(txt); const g=groupByKey(rows,r=>r.filename||''); const recs=[];
-  g.forEach((rs,fn)=>{ const ms=rs.filter(r=>r.id&&r.id!=='UNKNOWN'); const b=ms[0]||rs[0]||{}; const ck=sfChecksum(b); recs.push({ name:fn, size:b.filesize||'', puid:(b.id&&b.id!=='UNKNOWN')?b.id:'', fmtName:b.format||'', version:b.version||'', mime:b.mime||'', basis:b.basis||'', warning:b.warning||'', checksum:ck.digest, checksumAlgo:ck.algo, others:ms.slice(1).map(m=>`${m.id} ${m.format||''}`.trim()) }); });
+  g.forEach((rs,fn)=>{ const ms=rs.filter(r=>r.id&&r.id!=='UNKNOWN'); const b=ms[0]||rs[0]||{}; const ck=sfChecksum(b); recs.push({ name:fn, size:b.filesize||'', puid:(b.id&&b.id!=='UNKNOWN')?b.id:'', fmtName:b.format||'', version:b.version||'', mime:b.mime||'', basis:b.basis||'', warning:b.warning||'', checksum:ck.digest, checksumAlgo:ck.algo, others:ms.slice(1).map(m=>({puid:m.id||'', fmtName:m.format||'', version:m.version||'', basis:m.basis||'', warning:m.warning||''})) }); });
   return {recs, meta:{tool:'Siegfried', version:'', sig:''}};
 }
 function parseDroidCSV(txt){
   const {head,rows}=parseCSVtable(txt); const nc=head.includes('NAME')?'NAME':(head.includes('FILE_PATH')?'FILE_PATH':head[0]);
   const g=groupByKey(rows,r=>r[nc]||r.FILE_PATH||r.NAME||''); const recs=[];
   const dm={SHA512_HASH:'SHA-512',SHA256_HASH:'SHA-256',SHA1_HASH:'SHA-1',MD5_HASH:'MD5'};
-  g.forEach((rs,fn)=>{ const wi=rs.filter(r=>r.PUID); const b=wi[0]||rs[0]||{}; let ca='',cv=''; for(const k in dm){ if(b[k]){ca=dm[k];cv=b[k];break;} } recs.push({ name:b.FILE_PATH||b.NAME||fn, size:b.SIZE||'', puid:b.PUID||'', fmtName:b.FORMAT_NAME||'', version:b.FORMAT_VERSION||'', mime:b.MIME_TYPE||'', basis:'', warning:(b.STATUS&&!/^(Done|)$/i.test(b.STATUS))?b.STATUS:'', checksum:cv, checksumAlgo:ca, others:wi.slice(1).map(m=>`${m.PUID} ${m.FORMAT_NAME||''}`.trim()) }); });
+  g.forEach((rs,fn)=>{ const wi=rs.filter(r=>r.PUID); const b=wi[0]||rs[0]||{}; let ca='',cv=''; for(const k in dm){ if(b[k]){ca=dm[k];cv=b[k];break;} } recs.push({ name:b.FILE_PATH||b.NAME||fn, size:b.SIZE||'', puid:b.PUID||'', fmtName:b.FORMAT_NAME||'', version:b.FORMAT_VERSION||'', mime:b.MIME_TYPE||'', basis:'', warning:(b.STATUS&&!/^(Done|)$/i.test(b.STATUS))?b.STATUS:'', checksum:cv, checksumAlgo:ca, others:wi.slice(1).map(m=>({puid:m.PUID||'', fmtName:m.FORMAT_NAME||'', version:m.FORMAT_VERSION||'', basis:'', warning:''})) }); });
   return {recs, meta:{tool:'DROID', version:'', sig:''}};
 }
 function parseFormatIdFile(name,txt){
@@ -2047,13 +2103,13 @@ function fmtIdNote(rec,meta){
   let n='formato identificado por '+src;
   if(rec.basis) n+='; basis: '+rec.basis;
   if(rec.warning) n+='; warning: '+rec.warning;
-  if(rec.others&&rec.others.length) n+='; também compatível com: '+rec.others.join('; ');
   return n;
 }
 function applyFormatId(recs,meta,opts){
   const prefix=(opts&&opts.prefix)||false;
   const before=modelFiles();
-  const matched=new Set(); let updated=0, created=0, fixityAdded=0, fmtAdded=0; const unknownRecs=[], conflicts=[];
+  const matched=new Set(); let updated=0, created=0, fixityAdded=0, fmtAdded=0, events=0; const unknownRecs=[], conflicts=[];
+  const comEvento=wantIdEvent();
   recs.forEach(rec=>{
     if(!has(rec.puid)&&!has(rec.fmtName)){ unknownRecs.push(rec.name||'(sem nome)'); return; }
     let o=findExistingObject(modelFiles(), rec);
@@ -2073,9 +2129,17 @@ function applyFormatId(recs,meta,opts){
     }
     const cand={name:rec.fmtName, version:rec.version, regName:has(rec.puid)?'PRONOM':'', regKey:rec.puid||'', regRole:has(rec.puid)?'specification':''};
     if(mergeFormat(c, cand, fmtIdNote(rec,meta))) fmtAdded++;
+    /* Matches alternativos da mesma ferramenta: cada um e uma designacao de formato
+       propria, nao uma frase dentro da nota do primeiro (Data Dictionary 3.0, 1.5.4). */
+    (rec.others||[]).forEach(alt=>{
+      if(!has(alt.puid)&&!has(alt.fmtName)) return;
+      const ac={name:alt.fmtName, version:alt.version, regName:has(alt.puid)?'PRONOM':'', regKey:alt.puid||'', regRole:has(alt.puid)?'specification':''};
+      if(mergeFormat(c, ac, fmtIdNote(alt,meta))) fmtAdded++;
+    });
+    if(comEvento && addFormatIdEvent(o, meta, [rec.puid].concat((rec.others||[]).map(a=>a.puid)))) events++;
   });
   const unmatchedObjs=before.filter(o=>!matched.has(o)).map(o=>o.originalName||o.lid);
-  return {updated, created, fixityAdded, fmtAdded, unknownRecs, unmatchedObjs, conflicts};
+  return {updated, created, fixityAdded, fmtAdded, events, unknownRecs, unmatchedObjs, conflicts};
 }
 function handleFormatIdFile(ev){
   const file=ev.target.files[0]; if(!file) return; const msg=document.getElementById('fmtIdMsg');
@@ -2090,6 +2154,7 @@ function handleFormatIdFile(ev){
 }
 function fmtIdReportHTML(r,meta){
   let h=`<div class="val-item ok"><span class="ico">✓</span><span><strong>${r.updated}</strong> object(s) atualizado(s)${r.created?(`, <strong>${r.created}</strong> criado(s)`):''}${r.fixityAdded?(`, <strong>${r.fixityAdded}</strong> com fixidez calculada`):''} — fonte: ${esc(meta.tool)}${meta.version?(' '+esc(meta.version)):''}${meta.sig?(' · PRONOM '+esc(meta.sig)):''}. Fixidez já existente é preservada.</span></div>`;
+  if(r.events) h+=`<div class="val-item info"><span class="ico">i</span><span><strong>${r.events}</strong> evento(s) <em>format identification</em> criado(s), vinculado(s) ao agente da ferramenta com papel <em>executing program</em> (Data Dictionary 3.0, 2.4.1 e 2.6.3).</span></div>`;
   if(r.conflicts&&r.conflicts.length) h+=`<div class="val-item warn"><span class="ico">!</span><span><strong>${r.conflicts.length}</strong> object(s) com o mesmo caminho mas conteúdo diferente do já registrado (digest ou tamanho) — o arquivo mudou desde a importação anterior. A fixidez antiga foi preservada; confira antes de exportar: ${esc(r.conflicts.slice(0,6).join(', '))}.</span></div>`;
   if(r.fmtAdded) h+=`<div class="val-item info"><span class="ico">i</span><span><strong>${r.fmtAdded}</strong> object(s) com identificação divergente da já registrada — a nova foi acrescentada como <code>&lt;format&gt;</code> adicional, com a nota <em>${MULTI_ID_NOTE}</em> (Data Dictionary 3.0, 1.5.4).</span></div>`;
   if(r.unmatchedObjs&&r.unmatchedObjs.length) h+=`<div class="val-item warn"><span class="ico">!</span><span>${r.unmatchedObjs.length} object(s) do modelo sem correspondência: ${esc(r.unmatchedObjs.slice(0,8).join(', '))}${r.unmatchedObjs.length>8?'…':''}.</span></div>`;
@@ -2664,7 +2729,8 @@ function embeddedIdNote(fmt){
   return n;
 }
 function recordsToObjects(recs,prefix){
-  let created=0, updated=0, fixityAdded=0, fmtAdded=0; const conflicts=[];
+  let created=0, updated=0, fixityAdded=0, fmtAdded=0, events=0; const conflicts=[];
+  const comEvento=wantIdEvent(), meta={tool:'MetaPREMIS (identificação embutida)', version:'', sig:''};
   recs.forEach(r=>{
     let o=findExistingObject(modelFiles(), r);
     if(!o){
@@ -2678,9 +2744,10 @@ function recordsToObjects(recs,prefix){
     if(!((c.fixities||[]).some(x=>has(x.digest)))){ c.fixities=[{algo:r.algo,digest:r.sha,originator:''}]; fixityAdded++; }
     const cand={name:r.fmt.name||'', version:r.fmt.version||'', regName:r.fmt.puid?'PRONOM':'', regKey:r.fmt.puid||'', regRole:r.fmt.puid?'specification':''};
     if(mergeFormat(c, cand, embeddedIdNote(r.fmt))) fmtAdded++;
+    if(comEvento && addFormatIdEvent(o, meta, [r.fmt&&r.fmt.puid])) events++;
   });
   renderModel(); renderOutput();
-  return {created, updated, fixityAdded, fmtAdded, conflicts};
+  return {created, updated, fixityAdded, fmtAdded, events, conflicts};
 }
 function renderExtract(){
   document.getElementById('extractHost').innerHTML=`
@@ -2688,6 +2755,7 @@ function renderExtract(){
     <div style="font-size:11px;color:var(--ink-soft);margin-bottom:6px">Opções — valem para <strong>extrair metadados</strong> e <strong>Siegfried</strong> (abaixo):</div>
     <div class="chk"><input type="checkbox" id="ex_sha512"><label style="font-weight:400;margin:0" for="ex_sha512">usar SHA-512 (padrão: SHA-256)</label></div>
     <div class="chk"><input type="checkbox" id="ex_prefix" checked><label style="font-weight:400;margin:0" for="ex_prefix">prefixar originalName com objects/ (Archivematica)</label></div>
+    <div class="chk"><input type="checkbox" id="ex_event" checked><label style="font-weight:400;margin:0" for="ex_event">gerar evento PREMIS de <em>format identification</em> + agente da ferramenta</label></div>
   </div>
   <div class="import-zone">
     <p style="margin:0 0 8px;font-size:12.5px"><strong>Extrair metadados no navegador</strong> — tudo local, nada é enviado. Calcula tamanho, fixity (hash) e identifica o formato por conteúdo, criando objects no modelo.</p>
@@ -2747,6 +2815,7 @@ async function runExtractItems(items){
   const res=recordsToObjects(ok,prefix);   /* mesma reconciliação do caminho do Siegfried */
   const withPuid=ok.filter(r=>r.fmt&&r.fmt.puid).length;
   let h=`<div class="val-item ok"><span class="ico">✓</span><span><strong>${res.created}</strong> object(s) criado(s)${res.updated?(`, <strong>${res.updated}</strong> atualizado(s)`):''}${res.fixityAdded?(`, <strong>${res.fixityAdded}</strong> com fixidez calculada`):''} · ${algo} · ${withPuid} com PUID (estimado). Fixidez já existente é preservada. Edite pelos cards/abas.</span></div>`;
+  if(res.events) h+=`<div class="val-item info"><span class="ico">i</span><span><strong>${res.events}</strong> evento(s) <em>format identification</em> criado(s), vinculado(s) ao agente da ferramenta com papel <em>executing program</em> (Data Dictionary 3.0, 2.4.1 e 2.6.3).</span></div>`;
   if(res.conflicts&&res.conflicts.length) h+=`<div class="val-item warn"><span class="ico">!</span><span><strong>${res.conflicts.length}</strong> object(s) com o mesmo caminho mas conteúdo diferente do já registrado (digest ou tamanho) — o arquivo mudou desde a importação anterior. A fixidez antiga foi preservada; confira antes de exportar: ${esc(res.conflicts.slice(0,6).join(', '))}.</span></div>`;
   if(res.fmtAdded) h+=`<div class="val-item info"><span class="ico">i</span><span><strong>${res.fmtAdded}</strong> object(s) com identificação divergente da já registrada — a nova foi acrescentada como <code>&lt;format&gt;</code> adicional, com a nota <em>${MULTI_ID_NOTE}</em> (Data Dictionary 3.0, 1.5.4).</span></div>`;
   if(errs.length) h+=`<div class="val-item warn"><span class="ico">!</span><span>${errs.length} arquivo(s) não lido(s): ${esc(errs.slice(0,6).map(e=>e.name).join(', '))}${errs.length>6?'…':''}.</span></div>`;
