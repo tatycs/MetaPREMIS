@@ -1927,11 +1927,92 @@ function download(filename,text,mime){const blob=new Blob([text],{type:mime||'te
 /* ===================================================================
    Importar identificação de formato (Siegfried / DROID) — PRONOM completo.
    O usuário roda a ferramenta LOCAL e importa a saída; preenchemos o
-   formatRegistry (PUID/nome/versão) nos objects casados por nome de arquivo,
-   SEM tocar a fixity calculada no navegador. Nada é enviado.
+   formatRegistry (PUID/nome/versão) nos objects casados por caminho (ver
+   findExistingObject), SEM tocar a fixity calculada no navegador. Identificação
+   divergente da já registrada vira um <format> adicional. Nada é enviado.
    =================================================================== */
-function baseKey(p){ const s=String(p||'').replace(/\\/g,'/').replace(/\/+$/,''); return s.substring(s.lastIndexOf('/')+1).toLowerCase(); }
-function objBaseKey(o){ return baseKey(String(o.originalName||'').replace(/^objects\//,'')); }
+/* --- Identidade de object: um arquivo do pacote = um premis:object ---
+   A chave primaria e o caminho relativo normalizado (sem 'objects/', sem './',
+   minusculo). O digest confirma a identidade quando os dois importadores trazem
+   o caminho com detalhe diferente. Nunca funde por nome quando ha sinal de que
+   sao arquivos distintos (tamanhos diferentes, mais de um candidato).
+   O PREMIS nao regula duplicidade de conteudo — quem exige unicidade e o
+   identificador (Data Dictionary 3.0, 1.1: "Primary identifiers must be unique
+   within the repository"). Um arquivo = um object e decisao do MetaPREMIS. */
+function normPath(p){
+  return String(p||'').replace(/\\/g,'/').replace(/\/+/g,'/')
+    .replace(/^\.\//,'').replace(/^\//,'').replace(/^objects\//i,'')
+    .replace(/\/+$/,'').toLowerCase();
+}
+function baseKey(p){ const s=normPath(p); return s.substring(s.lastIndexOf('/')+1); }
+function objPathKey(o){ return normPath(o.originalName||''); }
+function objBaseKey(o){ return baseKey(o.originalName||''); }
+function objDigests(o){
+  const c=(o.characteristics&&o.characteristics[0])||{};
+  return (c.fixities||[]).map(f=>String(f.digest||'').toLowerCase()).filter(Boolean);
+}
+function objSize(o){ const c=(o.characteristics&&o.characteristics[0])||{}; return String(c.size||''); }
+function modelFiles(){ return model.objects.filter(o=>(o.objType||'file')!=='intellectualEntity'); }
+
+/* Object existente correspondente ao registro, ou null.
+   1) mesmo caminho  2) mesmo digest e mesmo nome de arquivo
+   3) mesmo nome de arquivo, candidato unico e tamanho compativel */
+function findExistingObject(objs, rec){
+  const rp=normPath(rec.path||rec.name||''); if(!rp) return null;
+  const byPath=objs.find(o=>objPathKey(o)===rp); if(byPath) return byPath;
+  /* Caminhos diferentes sao objetos diferentes, ainda que o conteudo seja igual
+     (dois arquivos no pacote). A unica excecao e a assimetria entre importadores:
+     um lado traz so o nome do arquivo, o outro o caminho completo. So nesse caso
+     vale casar por digest ou por nome+tamanho. */
+  const bk=baseKey(rp), flat=rp.indexOf('/')<0;
+  if(!flat) return null;   /* o registro traz diretorio e nenhum caminho bateu: e outro arquivo */
+  const comparable=o=>objBaseKey(o)===bk;
+  const dg=String(rec.checksum||rec.sha||'').toLowerCase();
+  if(dg){ const byDigest=objs.find(o=>comparable(o)&&objDigests(o).includes(dg)); if(byDigest) return byDigest; }
+  const cands=objs.filter(comparable);
+  if(cands.length===1){
+    const rs=(rec.size==null?'':String(rec.size)), os=objSize(cands[0]);
+    if(!rs||!os||rs===os) return cands[0];
+  }
+  return null;
+}
+/* Mesmo object, conteudo diferente do ja registrado: o arquivo mudou desde a
+   importacao anterior. Compara pelo digest; sem digest, pelo tamanho. Nao
+   sobrescreve a fixidez — avisa, para a conferencia ser humana. */
+function digestConflict(o, rec){
+  const dg=String(rec.checksum||rec.sha||'').toLowerCase();
+  if(dg){ const known=objDigests(o); if(known.length) return !known.includes(dg); }
+  const rs=(rec.size==null?'':String(rec.size)), os=objSize(o);
+  return !!(rs&&os&&rs!==os);
+}
+/* --- Identificacoes divergentes: um object, varios <format> ---
+   Data Dictionary 3.0, 1.5.4 (usage notes): "if the precise format cannot be
+   determined and two format designations are recorded, each is given within a
+   separate format container. In such cases the formatNote element can be used
+   to distinguish between the cases". O valor abaixo e exemplo publicado em
+   1.5.4.3 formatNote. */
+const MULTI_ID_NOTE='multiple format identifications found';
+function sameFormat(a,b){
+  const k1=String(a.regKey||'').toLowerCase(), k2=String(b.regKey||'').toLowerCase();
+  if(k1&&k2) return k1===k2;
+  return String(a.name||'').toLowerCase()===String(b.name||'').toLowerCase()
+      && String(a.version||'')===String(b.version||'');
+}
+function fmtIsEmpty(f){ return !has(f.name)&&!has(f.version)&&!has(f.regKey)&&!has(f.regName)&&!((f.notes||[]).some(has)); }
+/* true se acrescentou um <format> adicional (identificacao divergente). */
+function mergeFormat(c, cand, note){
+  c.formats=(c.formats||[]).filter(f=>!fmtIsEmpty(f));
+  let f=c.formats.find(x=>sameFormat(x,cand)), added=false;
+  if(!f){ f=mk.format(); c.formats.push(f); added=c.formats.length>1; }
+  if(has(cand.name)) f.name=cand.name;
+  if(has(cand.version)) f.version=cand.version;
+  if(has(cand.regKey)){ f.regName=cand.regName||'PRONOM'; f.regKey=cand.regKey; f.regRole=cand.regRole||'specification'; }
+  f.notes=f.notes||[];
+  if(has(note)&&!f.notes.includes(note)) f.notes.push(note);
+  if(c.formats.length>1) c.formats.forEach(x=>{ x.notes=x.notes||[]; if(!x.notes.includes(MULTI_ID_NOTE)) x.notes.push(MULTI_ID_NOTE); });
+  if(!c.formats.length) c.formats=[mk.format()];
+  return added;
+}
 function parseCSVtable(txt){ const lines=txt.split(/\r?\n/).filter(l=>l.length); if(!lines.length) return {head:[],rows:[]}; const head=splitCSV(lines[0]); const rows=lines.slice(1).filter(l=>l.trim()).map(l=>{ const c=splitCSV(l); const o={}; head.forEach((h,i)=>o[h]=c[i]!=null?c[i]:''); return o; }); return {head,rows}; }
 function groupByKey(rows,fn){ const g=new Map(); rows.forEach(r=>{ const k=fn(r); if(!g.has(k)) g.set(k,[]); g.get(k).push(r); }); return g; }
 function sfChecksum(o){ const M={sha512:'SHA-512',sha256:'SHA-256',sha1:'SHA-1',md5:'MD5',crc:'CRC32'}; for(const k in M){ if(o&&o[k]) return {algo:M[k], digest:o[k]}; } return {algo:'',digest:''}; }
@@ -1971,25 +2052,30 @@ function fmtIdNote(rec,meta){
 }
 function applyFormatId(recs,meta,opts){
   const prefix=(opts&&opts.prefix)||false;
-  const before=model.objects.filter(o=>(o.objType||'file')!=='intellectualEntity');
-  const idx=new Map(); before.forEach(o=>{ const k=objBaseKey(o); if(!k) return; if(!idx.has(k)) idx.set(k,[]); idx.get(k).push(o); });
-  const matched=new Set(); let updated=0, created=0, fixityAdded=0; const unknownRecs=[];
+  const before=modelFiles();
+  const matched=new Set(); let updated=0, created=0, fixityAdded=0, fmtAdded=0; const unknownRecs=[], conflicts=[];
   recs.forEach(rec=>{
     if(!has(rec.puid)&&!has(rec.fmtName)){ unknownRecs.push(rec.name||'(sem nome)'); return; }
-    const k=baseKey(rec.name); const cands=(k&&idx.get(k))||[];
-    let o = cands.length===1 ? cands[0] : (cands.length>1 ? (cands.find(x=>String((x.characteristics[0]||{}).size||'')===String(rec.size))||cands[0]) : null);
-    if(!o){ o=mk.object(); o.objType='file'; o.identifiers[0]={type:'UUID',value:(self.crypto&&crypto.randomUUID)?crypto.randomUUID():('id-'+Math.random().toString(16).slice(2))}; o.originalName=(prefix&&rec.name&&!/^objects\//.test(rec.name))?('objects/'+rec.name):(rec.name||''); if(has(rec.size)) o.characteristics[0].size=String(rec.size); model.objects.push(o); created++; }
-    else if(!matched.has(o)){ matched.add(o); updated++; }
-    const c=o.characteristics[0]; let f=c.formats[0]; if(!f){ f=mk.format(); c.formats=[f]; }
-    if(has(rec.fmtName)) f.name=rec.fmtName;
-    if(has(rec.version)) f.version=rec.version;
-    if(has(rec.puid)){ f.regName='PRONOM'; f.regKey=rec.puid; f.regRole='specification'; }
+    let o=findExistingObject(modelFiles(), rec);
+    if(!o){
+      o=mk.object(); o.objType='file';
+      o.identifiers[0]={type:'UUID',value:(self.crypto&&crypto.randomUUID)?crypto.randomUUID():('id-'+Math.random().toString(16).slice(2))};
+      const on=rec.name||'';
+      o.originalName=(prefix&&on&&!/^objects\//i.test(on))?('objects/'+on):on;
+      if(has(rec.size)) o.characteristics[0].size=String(rec.size);
+      model.objects.push(o); created++;
+    } else { if(digestConflict(o,rec)) conflicts.push(o.originalName||o.lid);
+             if(!matched.has(o)){ matched.add(o); updated++; } }
+    const c=o.characteristics[0];
     if(!has(c.size)&&has(rec.size)) c.size=String(rec.size);
-    if(has(rec.checksum) && !((c.fixities||[]).some(x=>has(x.digest)))){ c.fixities=[{algo:rec.checksumAlgo||'SHA-256', digest:rec.checksum, originator:''}]; fixityAdded++; }
-    f.notes=f.notes||[]; const note=fmtIdNote(rec,meta); if(!f.notes.includes(note)) f.notes.push(note);
+    if(has(rec.checksum) && !((c.fixities||[]).some(x=>has(x.digest)))){
+      c.fixities=[{algo:rec.checksumAlgo||'SHA-256', digest:rec.checksum, originator:''}]; fixityAdded++;
+    }
+    const cand={name:rec.fmtName, version:rec.version, regName:has(rec.puid)?'PRONOM':'', regKey:rec.puid||'', regRole:has(rec.puid)?'specification':''};
+    if(mergeFormat(c, cand, fmtIdNote(rec,meta))) fmtAdded++;
   });
   const unmatchedObjs=before.filter(o=>!matched.has(o)).map(o=>o.originalName||o.lid);
-  return {updated, created, fixityAdded, unknownRecs, unmatchedObjs};
+  return {updated, created, fixityAdded, fmtAdded, unknownRecs, unmatchedObjs, conflicts};
 }
 function handleFormatIdFile(ev){
   const file=ev.target.files[0]; if(!file) return; const msg=document.getElementById('fmtIdMsg');
@@ -2004,6 +2090,8 @@ function handleFormatIdFile(ev){
 }
 function fmtIdReportHTML(r,meta){
   let h=`<div class="val-item ok"><span class="ico">✓</span><span><strong>${r.updated}</strong> object(s) atualizado(s)${r.created?(`, <strong>${r.created}</strong> criado(s)`):''}${r.fixityAdded?(`, <strong>${r.fixityAdded}</strong> com fixidez calculada`):''} — fonte: ${esc(meta.tool)}${meta.version?(' '+esc(meta.version)):''}${meta.sig?(' · PRONOM '+esc(meta.sig)):''}. Fixidez já existente é preservada.</span></div>`;
+  if(r.conflicts&&r.conflicts.length) h+=`<div class="val-item warn"><span class="ico">!</span><span><strong>${r.conflicts.length}</strong> object(s) com o mesmo caminho mas conteúdo diferente do já registrado (digest ou tamanho) — o arquivo mudou desde a importação anterior. A fixidez antiga foi preservada; confira antes de exportar: ${esc(r.conflicts.slice(0,6).join(', '))}.</span></div>`;
+  if(r.fmtAdded) h+=`<div class="val-item info"><span class="ico">i</span><span><strong>${r.fmtAdded}</strong> object(s) com identificação divergente da já registrada — a nova foi acrescentada como <code>&lt;format&gt;</code> adicional, com a nota <em>${MULTI_ID_NOTE}</em> (Data Dictionary 3.0, 1.5.4).</span></div>`;
   if(r.unmatchedObjs&&r.unmatchedObjs.length) h+=`<div class="val-item warn"><span class="ico">!</span><span>${r.unmatchedObjs.length} object(s) do modelo sem correspondência: ${esc(r.unmatchedObjs.slice(0,8).join(', '))}${r.unmatchedObjs.length>8?'…':''}.</span></div>`;
   if(r.unknownRecs&&r.unknownRecs.length) h+=`<div class="val-item info"><span class="ico">i</span><span>${r.unknownRecs.length} registro(s) sem identificação (UNKNOWN): ${esc(r.unknownRecs.slice(0,8).join(', '))}${r.unknownRecs.length>8?'…':''}.</span></div>`;
   return h;
@@ -2519,13 +2607,14 @@ function pdfVersion(b){
     const slice=s.slice(o0,o1);
     if(/\/Type\s*\/Catalog\b/.test(slice) || /\/Catalog\b/.test(slice)){ if(!eff || cmp(v,eff)>0) eff=v; }
   }
-  return {version: ok(eff)?eff:'', puid: MAP[eff]||''};
+  return {version: ok(eff)?eff:'', puid: MAP[eff]||'', header: hv,
+          vsrc: (ok(eff)&&hv&&eff!==hv)?'catalog':'header'};
 }
 function detectFormat(b,name){
   const ext=(name.split('.').pop()||'').toLowerCase(), n=b.length;
   const at=(arr,off)=>arr.every((v,i)=>b[(off||0)+i]===v);
   const asc=(off,len)=>{let s='';for(let i=0;i<len&&off+i<n;i++)s+=String.fromCharCode(b[off+i]);return s;};
-  if(at([0x25,0x50,0x44,0x46,0x2D])){ const pv=pdfVersion(b); return {name:'Portable Document Format (PDF)',version:pv.version,mime:'application/pdf',puid:pv.puid}; }
+  if(at([0x25,0x50,0x44,0x46,0x2D])){ const pv=pdfVersion(b); return {name:'Portable Document Format (PDF)',version:pv.version,mime:'application/pdf',puid:pv.puid,vsrc:pv.vsrc,header:pv.header}; }
   if(asc(0,6)==='GIF87a') return {name:'Graphics Interchange Format (GIF)',version:'87a',mime:'image/gif',puid:'fmt/3'};
   if(asc(0,6)==='GIF89a') return {name:'Graphics Interchange Format (GIF)',version:'89a',mime:'image/gif',puid:'fmt/4'};
   if(at([0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A])) return {name:'Portable Network Graphics (PNG)',version:'1.2',mime:'image/png',puid:'fmt/13'};
@@ -2563,19 +2652,35 @@ async function extractOne(file,algo,relPath){
   const sha=[...new Uint8Array(hb)].map(x=>x.toString(16).padStart(2,'0')).join('');
   return {name:file.name,path:relPath||file.webkitRelativePath||file.name,size:file.size,sha,algo,fmt};
 }
+/* Nota de procedencia da identificacao embutida. Ao contrario do Siegfried, aqui
+   o PUID e deduzido do conteudo, nao casado por assinatura do PRONOM — e a versao
+   do PDF pode vir do /Version do Catalog, nao do cabeçalho. Isso precisa viajar
+   junto com o XML, nao ficar so no aviso da tela. */
+function embeddedIdNote(fmt){
+  let n='formato identificado pela identificação embutida do MetaPREMIS (por conteúdo)';
+  if(fmt&&fmt.puid) n+='; PUID estimado, não casado por assinatura do PRONOM';
+  if(fmt&&fmt.vsrc==='catalog') n+='; versão efetiva pelo /Version do dicionário Catalog'+(fmt.header?(' (o cabeçalho declara '+fmt.header+')'):'');
+  if(fmt&&!fmt.puid&&fmt.mime) n+='; MIME: '+fmt.mime;
+  return n;
+}
 function recordsToObjects(recs,prefix){
+  let created=0, updated=0, fixityAdded=0, fmtAdded=0; const conflicts=[];
   recs.forEach(r=>{
-    const o=mk.object(); o.objType='file';
-    o.identifiers[0]={type:'UUID',value:(self.crypto&&crypto.randomUUID)?crypto.randomUUID():('sha-'+r.sha.slice(0,12))};
-    const on=r.path; o.originalName=(prefix&&!/^objects\//.test(on))?('objects/'+on):on;
-    const c=o.characteristics[0]; c.size=String(r.size); c.fixities=[{algo:r.algo,digest:r.sha,originator:''}];
-    const f=mk.format(); f.name=r.fmt.name||''; f.version=r.fmt.version||'';
-    if(r.fmt.puid){ f.regName='PRONOM'; f.regKey=r.fmt.puid; f.regRole='specification'; }
-    else if(r.fmt.mime){ f.notes.push('MIME: '+r.fmt.mime); }
-    c.formats=[f];
-    model.objects.push(o);
+    let o=findExistingObject(modelFiles(), r);
+    if(!o){
+      o=mk.object(); o.objType='file';
+      o.identifiers[0]={type:'UUID',value:(self.crypto&&crypto.randomUUID)?crypto.randomUUID():('sha-'+r.sha.slice(0,12))};
+      const on=r.path; o.originalName=(prefix&&!/^objects\//i.test(on))?('objects/'+on):on;
+      model.objects.push(o); created++;
+    } else { if(digestConflict(o,r)) conflicts.push(o.originalName||o.lid); updated++; }
+    const c=o.characteristics[0];
+    if(!has(c.size)) c.size=String(r.size);
+    if(!((c.fixities||[]).some(x=>has(x.digest)))){ c.fixities=[{algo:r.algo,digest:r.sha,originator:''}]; fixityAdded++; }
+    const cand={name:r.fmt.name||'', version:r.fmt.version||'', regName:r.fmt.puid?'PRONOM':'', regKey:r.fmt.puid||'', regRole:r.fmt.puid?'specification':''};
+    if(mergeFormat(c, cand, embeddedIdNote(r.fmt))) fmtAdded++;
   });
   renderModel(); renderOutput();
+  return {created, updated, fixityAdded, fmtAdded, conflicts};
 }
 function renderExtract(){
   document.getElementById('extractHost').innerHTML=`
@@ -2639,9 +2744,11 @@ async function runExtractItems(items){
   const recs=[];
   for(const it of items){ try{ recs.push(await extractOne(it.file,algo,it.path)); }catch(err){ recs.push({name:it.file.name,size:it.file.size,error:(err&&err.message)||String(err)}); } }
   const ok=recs.filter(r=>!r.error), errs=recs.filter(r=>r.error);
-  recordsToObjects(ok,prefix);   /* aplica direto ao modelo (sem passo extra), igual ao Siegfried */
+  const res=recordsToObjects(ok,prefix);   /* mesma reconciliação do caminho do Siegfried */
   const withPuid=ok.filter(r=>r.fmt&&r.fmt.puid).length;
-  let h=`<div class="val-item ok"><span class="ico">✓</span><span><strong>${ok.length}</strong> object(s) adicionado(s) ao modelo · ${algo} · ${withPuid} com PUID (PRONOM). Edite pelos cards/abas.</span></div>`;
+  let h=`<div class="val-item ok"><span class="ico">✓</span><span><strong>${res.created}</strong> object(s) criado(s)${res.updated?(`, <strong>${res.updated}</strong> atualizado(s)`):''}${res.fixityAdded?(`, <strong>${res.fixityAdded}</strong> com fixidez calculada`):''} · ${algo} · ${withPuid} com PUID (estimado). Fixidez já existente é preservada. Edite pelos cards/abas.</span></div>`;
+  if(res.conflicts&&res.conflicts.length) h+=`<div class="val-item warn"><span class="ico">!</span><span><strong>${res.conflicts.length}</strong> object(s) com o mesmo caminho mas conteúdo diferente do já registrado (digest ou tamanho) — o arquivo mudou desde a importação anterior. A fixidez antiga foi preservada; confira antes de exportar: ${esc(res.conflicts.slice(0,6).join(', '))}.</span></div>`;
+  if(res.fmtAdded) h+=`<div class="val-item info"><span class="ico">i</span><span><strong>${res.fmtAdded}</strong> object(s) com identificação divergente da já registrada — a nova foi acrescentada como <code>&lt;format&gt;</code> adicional, com a nota <em>${MULTI_ID_NOTE}</em> (Data Dictionary 3.0, 1.5.4).</span></div>`;
   if(errs.length) h+=`<div class="val-item warn"><span class="ico">!</span><span>${errs.length} arquivo(s) não lido(s): ${esc(errs.slice(0,6).map(e=>e.name).join(', '))}${errs.length>6?'…':''}.</span></div>`;
   host.innerHTML=h;
 }
