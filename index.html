@@ -145,6 +145,7 @@
   .tcar-sp{display:inline-block;width:13px}
   #toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(10px);background:var(--ink);color:var(--paper);padding:9px 15px;border-radius:6px;font-size:12.5px;box-shadow:0 4px 16px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:9999;max-width:80vw}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  .bh.has-data .bt::after{content:"●";color:var(--amber);font-size:8px;margin-left:7px;vertical-align:2px}
   .card{border:1px solid var(--line);border-left:3px solid var(--ink);background:var(--paper-2);border-radius:0 4px 4px 0;padding:8px 10px;margin-bottom:7px;font-size:12.5px}
   .card .cid{font-family:var(--mono);font-size:10.5px;color:var(--amber)}
   .card .ctitle{font-weight:600}
@@ -1285,6 +1286,23 @@ function blockHead(key,title,card,reqStar,hkey){
   return `<div class="bh" onclick="toggleBlock('${key}')"><span class="bt">${title}${reqStar?'<span class="req">*</span>':''} <span class="card-c">${card}</span>${helpIcon(hkey)}</span><span class="caret">${isC?'▸ expandir':'▾'}</span></div>`;
 }
 function toggleBlock(key){ collapsed[key]=(collapsed[key]===false); renderForm(); }
+/* marca no cabeçalho os blocos colapsáveis que têm algum campo preenchido (para ver sem abrir) */
+function markFilledBlocks(){
+  const host=document.getElementById('formHost'); if(!host) return;
+  host.querySelectorAll('.block').forEach(b=>{
+    const bh=b.querySelector(':scope > .bh'); if(!bh||!bh.getAttribute('onclick')) return;
+    const bb=b.querySelector(':scope > .bb'); if(!bb) return;
+    let filled=false;
+    bb.querySelectorAll('input,select,textarea').forEach(el=>{ if(filled) return;
+      if(el.type==='button'||el.type==='file'||el.type==='hidden') return;
+      if(el.type==='checkbox'||el.type==='radio'){ if(el.checked) filled=true; return; }
+      const v=(el.value||'').trim();
+      if(el.tagName==='SELECT'){ if(v&&v!=='__other__') filled=true; } else if(v) filled=true;
+    });
+    bh.classList.toggle('has-data', filled);
+    bh.title = filled ? 'contém dados preenchidos' : '';
+  });
+}
 
 /* ====================== OBJECT ====================== */
 /* ===== vocabulário LoC de relationship: menus (dropdown) com "Outro…" + recíproco ===== */
@@ -1849,6 +1867,7 @@ function commitRights(){ syncRgt(); const c=JSON.parse(JSON.stringify(ensureRgt(
 function renderForm(){
   if(currentEnt==='object') renderObjectForm(); else if(currentEnt==='event') renderEventForm(); else if(currentEnt==='rights') renderRightsForm(); else renderAgentForm();
   if(editing[currentEnt]){ const host=document.getElementById('formHost'); if(host) host.insertAdjacentHTML('afterbegin', `<div class="edit-banner">✎ editando ${editing[currentEnt]} — altere e clique em "salvar alterações"</div>`); }
+  markFilledBlocks();
 }
 
 /* ---- modelo ---- */
