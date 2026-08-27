@@ -146,6 +146,10 @@
   #toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(10px);background:var(--ink);color:var(--paper);padding:9px 15px;border-radius:6px;font-size:12.5px;box-shadow:0 4px 16px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:9999;max-width:80vw}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   .bh.has-data .bt::after{content:"●";color:var(--amber);font-size:8px;margin-left:7px;vertical-align:2px}
+  .ext-struct{border:1px solid var(--line);border-radius:5px;padding:7px 9px;margin-bottom:8px;background:var(--paper-2)}
+  .ext-kid{margin:5px 0 6px 8px;border-left:2px solid var(--line);padding-left:8px}
+  .ext-row.ext-attr{margin-left:12px}
+  .ext-row.ext-attr input{font-size:11px}
   .card{border:1px solid var(--line);border-left:3px solid var(--ink);background:var(--paper-2);border-radius:0 4px 4px 0;padding:8px 10px;margin-bottom:7px;font-size:12.5px}
   .card .cid{font-family:var(--mono);font-size:10.5px;color:var(--amber)}
   .card .ctitle{font-weight:600}
@@ -380,19 +384,61 @@ function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,
 function elv(tag, val, ind){ return `${' '.repeat(ind)}<premis:${tag}>${esc(val)}</premis:${tag}>`; }
 function rawExt(tag, it, ind){ const a=(it&&it.a)||''; const x=(typeof it==='string')?it:((it&&it.x)||''); if(!has(x)&&!has(a)) return ''; const p=' '.repeat(ind); return `${p}<premis:${tag}${a}>\n${(x||'').trim()}\n${p}</premis:${tag}>`; }
 function extId(path,k){ return 'x_'+path.replace(/[^a-zA-Z0-9]/g,'_')+'_'+k; }
+/* extensão estruturada (nome+valor): parseia o XML bruto em raiz + namespace + filhos (texto/atributos).
+   Retorna null se for aninhado/complexo demais → cai no editor de XML bruto. */
+function extParse(x){ x=(x||'').trim(); if(!x) return {root:'',ns:'',kids:[]};
+  let doc; try{ doc=new DOMParser().parseFromString(x,'application/xml'); }catch(e){ return null; }
+  if(doc.getElementsByTagName('parsererror').length) return null;
+  const root=doc.documentElement; if(!root) return {root:'',ns:'',kids:[]};
+  const kids=[];
+  for(const c of Array.from(root.children)){
+    if(c.children.length>0) return null; /* filho com sub-elementos → complexo */
+    const attrs=[]; for(const at of Array.from(c.attributes)){ const n=at.name; if(n==='xmlns'||n.indexOf('xmlns:')===0) continue; attrs.push({k:n,v:at.value}); }
+    kids.push({tag:c.localName, value:(c.textContent||''), attrs});
+  }
+  return {root:root.localName, ns:root.namespaceURI||'', kids};
+}
+function extToX(s){ if(!s||!has(s.root)) return '';
+  const useP=has(s.ns), pfx=useP?'ext:':'', nsAttr=useP?` xmlns:ext="${esc(s.ns)}"`:'';
+  const inner=(s.kids||[]).filter(k=>has(k.tag)).map(k=>{
+    const at=(k.attrs||[]).filter(a=>has(a.k)).map(a=>` ${a.k}="${esc(a.v||'')}"`).join('');
+    return has(k.value) ? `\n  <${pfx}${k.tag}${at}>${esc(k.value)}</${pfx}${k.tag}>` : `\n  <${pfx}${k.tag}${at}/>`;
+  }).join('');
+  return `<${pfx}${s.root}${nsAttr}>${inner}\n</${pfx}${s.root}>`;
+}
+function extItem(path,k){ const a=extPathArr(path); return a?a[k]:null; }
+function addExtKid(path,k){ curSync(); const it=extItem(path,k); if(it){ it._s=it._s||extParse(it.x||'')||{root:'',ns:'',kids:[]}; it._s.kids.push({tag:'',value:'',attrs:[]}); it.x=extToX(it._s); renderForm(); } }
+function rmExtKid(path,k,j){ curSync(); const it=extItem(path,k); if(it&&it._s){ it._s.kids.splice(j,1); it.x=extToX(it._s); renderForm(); } }
+function addExtAttr(path,k,j){ curSync(); const it=extItem(path,k); if(it&&it._s&&it._s.kids[j]){ (it._s.kids[j].attrs=it._s.kids[j].attrs||[]).push({k:'',v:''}); it.x=extToX(it._s); renderForm(); } }
+function rmExtAttr(path,k,j,m){ curSync(); const it=extItem(path,k); if(it&&it._s&&it._s.kids[j]){ it._s.kids[j].attrs.splice(m,1); it.x=extToX(it._s); renderForm(); } }
 function extList(label, path, arr, hkey, line){
   arr=arr||[];
   let h=`<div class="subblock"><div class="sh"><span>${label} [0..n]${helpIcon(hkey||label)}</span></div>`;
   arr.forEach((it,k)=>{
-    const x=(typeof it==='string')?it:((it&&it.x)||''); const a=(it&&it.a)||'';
-    const id=extId(path,k);
-    const inp = line ? `<input id="${id}" class="ext-line" value="${esc(x)}" placeholder="texto livre (xs:string)" oninput="curSync()">`
-                     : `<textarea id="${id}" class="ext-xml" placeholder="colar XML de schema externo" oninput="curSync()">${esc(x)}</textarea>`;
-    h+=`<div class="ext-row">${inp}<button class="rm-x" title="remover" onclick="rmExt('${path}',${k})">×</button></div>`;
-    if(a) h+=`<div class="card-min" style="margin-top:-2px">atributos preservados do XML:${esc(a)}</div>`;
+    const base=extId(path,k);
+    if(line){ const x=(typeof it==='string')?it:((it&&it.x)||'');
+      h+=`<div class="ext-row"><input id="${base}" class="ext-line" value="${esc(x)}" placeholder="texto livre (xs:string)" oninput="curSync()"><button class="rm-x" title="remover" onclick="rmExt('${path}',${k})">×</button></div>`;
+      return; }
+    if(it && it._s===undefined) it._s=extParse((typeof it==='string')?it:((it&&it.x)||''));
+    const s=it&&it._s;
+    if(s){
+      h+=`<div class="ext-struct"><div class="ext-row"><input id="${base}_root" value="${esc(s.root)}" placeholder="elemento-raiz (ex.: atuacaoEDocs)" oninput="curSync()"><button class="rm-x" title="remover extensão" onclick="rmExt('${path}',${k})">×</button></div>`;
+      h+=`<input id="${base}_ns" class="ext-line" value="${esc(s.ns)}" placeholder="namespace (xmlns) — opcional" oninput="curSync()">`;
+      (s.kids||[]).forEach((kd,j)=>{
+        h+=`<div class="ext-kid"><div class="ext-row"><input id="${base}_k${j}_tag" value="${esc(kd.tag)}" placeholder="nome" oninput="curSync()"><input id="${base}_k${j}_val" value="${esc(kd.value)}" placeholder="valor" oninput="curSync()"><button class="rm-x" onclick="rmExtKid('${path}',${k},${j})">×</button></div>`;
+        (kd.attrs||[]).forEach((at,m)=>{ h+=`<div class="ext-row ext-attr"><input id="${base}_k${j}_a${m}_k" value="${esc(at.k)}" placeholder="atributo" oninput="curSync()"><input id="${base}_k${j}_a${m}_v" value="${esc(at.v)}" placeholder="valor" oninput="curSync()"><button class="rm-x" onclick="rmExtAttr('${path}',${k},${j},${m})">×</button></div>`; });
+        h+=`<button class="add-btn" onclick="addExtAttr('${path}',${k},${j})">+ atributo</button></div>`;
+      });
+      h+=`<button class="add-btn" onclick="addExtKid('${path}',${k})">+ propriedade</button></div>`;
+    } else {
+      const x=(typeof it==='string')?it:((it&&it.x)||''); const a=(it&&it.a)||'';
+      h+=`<div class="ext-row"><textarea id="${base}" class="ext-xml" placeholder="XML de schema externo" oninput="curSync()">${esc(x)}</textarea><button class="rm-x" title="remover" onclick="rmExt('${path}',${k})">×</button></div>`;
+      if(a) h+=`<div class="card-min">atributos preservados:${esc(a)}</div>`;
+      h+=`<div class="card-min">extensão aninhada — editável como XML.</div>`;
+    }
   });
   h+=`<button class="add-btn" onclick="addExt('${path}')">+ ${label}</button>`;
-  if(!line) h+=`<div class="card-min">repetível — cada item é uma extensão; declare o schema externo no próprio XML. Atributos vindos do XML são preservados.</div>`;
+  if(!line) h+=`<div class="card-min">nome + valor por propriedade; o namespace vai na raiz. Estruturas aninhadas aparecem como XML.</div>`;
   return h+`</div>`;
 }
 function curDraft(){ return currentEnt==='event'?evtDraft:currentEnt==='agent'?agtDraft:currentEnt==='rights'?ensureRgt():objDraft; }
@@ -400,7 +446,16 @@ function curSync(){ if(currentEnt==='event')syncEvt(); else if(currentEnt==='age
 function extPathArr(path){ let o=curDraft(); for(const p of path.split('.')){ if(o==null) return null; o=o[/^\d+$/.test(p)?+p:p]; } return o; }
 function addExt(path){ curSync(); const a=extPathArr(path); if(a){ a.push({a:'',x:''}); renderForm(); } }
 function rmExt(path,k){ curSync(); const a=extPathArr(path); if(a){ a.splice(k,1); renderForm(); } }
-function readExts(path, arr){ arr=arr||[]; return arr.map((it,k)=>{ const el=document.getElementById(extId(path,k)); const a=(it&&it.a)||''; const x=el?el.value:((typeof it==='string')?it:((it&&it.x)||'')); return {a, x}; }); }
+function readExts(path, arr){ arr=arr||[]; return arr.map((it,k)=>{
+  const base=extId(path,k);
+  if(it && it._s && document.getElementById(base+'_root')){
+    const g=id=>{const el=document.getElementById(id);return el?el.value:'';};
+    const ns={root:g(base+'_root').trim(), ns:g(base+'_ns').trim(), kids:[]};
+    (it._s.kids||[]).forEach((kd,j)=>{ const tag=g(base+'_k'+j+'_tag').trim(); const val=g(base+'_k'+j+'_val'); const attrs=[]; (kd.attrs||[]).forEach((at,m)=>{ const ak=g(base+'_k'+j+'_a'+m+'_k').trim(); const av=g(base+'_k'+j+'_a'+m+'_v'); if(ak) attrs.push({k:ak,v:av}); }); ns.kids.push({tag,value:val,attrs}); });
+    return {a:(it&&it.a)||'', x:extToX(ns), _s:ns};
+  }
+  const el=document.getElementById(base); const a=(it&&it.a)||''; const x=el?el.value:((typeof it==='string')?it:((it&&it.x)||'')); return {a, x};
+}); }
 const has = v => v!=null && String(v).trim()!=='';
 
 /* ---- gerador: object ---- */
