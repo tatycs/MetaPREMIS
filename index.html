@@ -143,6 +143,8 @@
   .tnode.collapsed>.tlabel>.tcar{transform:rotate(-90deg)}
   .tnode.collapsed>.tchildren{display:none}
   .tcar-sp{display:inline-block;width:13px}
+  #toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%) translateY(10px);background:var(--ink);color:var(--paper);padding:9px 15px;border-radius:6px;font-size:12.5px;box-shadow:0 4px 16px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;z-index:9999;max-width:80vw}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
   .card{border:1px solid var(--line);border-left:3px solid var(--ink);background:var(--paper-2);border-radius:0 4px 4px 0;padding:8px 10px;margin-bottom:7px;font-size:12.5px}
   .card .cid{font-family:var(--mono);font-size:10.5px;color:var(--amber)}
   .card .ctitle{font-weight:600}
@@ -973,7 +975,11 @@ function validate(profile){
     if(allow.env) (o.envFunctions||[]).forEach((f,fi)=>intchk(f.fLevel,`${ref}/environmentFunction[${fi+1}]`,'environmentFunctionLevel'));
     if(allow.pl){ const byType={}; (o.preservationLevels||[]).forEach(p=>{ if(has(p.plType)) (byType[p.plType]=byType[p.plType]||[]).push(p); }); Object.keys(byType).forEach(tp=>{ if(byType[tp].length>1 && byType[tp].some(p=>!has(p.role))) add('warn','dd',`${ref}: mais de um preservationLevel com preservationLevelType="${tp}"; preservationLevelRole deveria ser informado em cada (DD).`); });
       (o.preservationLevels||[]).forEach((p,i)=>dchk(p.dateAssigned,`${ref}/preservationLevel[${i+1}]`,'preservationLevelDateAssigned')); }
-    (o.relationships||[]).forEach((rel,ri)=>{ const rref=`${ref}/relationship[${ri+1}]`; vchk('relationshipType', rel.type, rref); if(rel.relObjSeq && Object.keys(rel.relObjSeq).length && !/structural/i.test(rel.type||'')) add('warn','dd',`${rref}: relatedObjectSequence só se aplica a relação structural (DD).`); });
+    (o.relationships||[]).forEach((rel,ri)=>{ const rref=`${ref}/relationship[${ri+1}]`; vchk('relationshipType', rel.type, rref);
+      if(has(rel.subType)){ const nsub=normv(rel.subType), owner=RELSUB_TYPEOF[nsub];
+        if(!owner) add('warn','dd',`${rref}: relationshipSubType="${rel.subType}" fora do vocabulário controlado da LoC (recomendado; não bloqueia).`);
+        else if(has(rel.type)&&normv(rel.type)!==owner) add('warn','dd',`${rref}: relationshipSubType="${rel.subType}" pertence ao tipo "${owner}", mas relationshipType="${rel.type}" — ajuste um dos dois.`); }
+      if(rel.relObjSeq && Object.keys(rel.relObjSeq).length && !/structural/i.test(rel.type||'')) add('warn','dd',`${rref}: relatedObjectSequence só se aplica a relação structural (DD).`); });
   });
   model.events.forEach(e=>{
     const ref = has(e.idValue) ? `event "${e.idValue}"${e.lid?` (${e.lid})`:''}` : `event ${e.lid}`;
@@ -1280,6 +1286,51 @@ function blockHead(key,title,card,reqStar,hkey){
 function toggleBlock(key){ collapsed[key]=(collapsed[key]===false); renderForm(); }
 
 /* ====================== OBJECT ====================== */
+/* ===== vocabulário LoC de relationship: menus (dropdown) com "Outro…" + recíproco ===== */
+const normv=s=>(s||'').toLowerCase().replace(/[^a-z]/g,'');
+const RELTYPES=['dependency','derivation','logical','reference','replacement','structural'];
+const RELSUB={ dependency:['deploys','is Compatible With','is Deployed On','is Required By','requires'],
+  derivation:['compressed from','compressed to','encrypted from','encrypted to','has Source','is Source Of'],
+  logical:['generalizes','specializes'],
+  reference:['documents','is Documented In'],
+  replacement:['emulates','is Emulated By','is Superseded By','supersedes'],
+  structural:['has Part','has Root','has Sibling','includes','is Included In','is Part Of','is Represented By','represents'] };
+const RELSUB_TYPEOF={}; Object.keys(RELSUB).forEach(t=>RELSUB[t].forEach(s=>RELSUB_TYPEOF[normv(s)]=t));
+/* recíprocos (chave = subtipo normalizado → rótulo do recíproco); hasSibling/isCompatibleWith são simétricos; hasRoot não tem */
+const RECIP={ ispartof:'has Part',haspart:'is Part Of',isincludedin:'includes',includes:'is Included In',isrepresentedby:'represents',represents:'is Represented By',hassource:'is Source Of',issourceof:'has Source',compressedfrom:'compressed to',compressedto:'compressed from',encryptedfrom:'encrypted to',encryptedto:'encrypted from',isrequiredby:'requires',requires:'is Required By',deploys:'is Deployed On',isdeployedon:'deploys',documents:'is Documented In',isdocumentedin:'documents',emulates:'is Emulated By',isemulatedby:'emulates',generalizes:'specializes',specializes:'generalizes',issupersededby:'supersedes',supersedes:'is Superseded By',hassibling:'has Sibling',iscompatiblewith:'is Compatible With' };
+function vopt(options,cur){ return `<option value="">— selecione —</option>`+options.map(o=>`<option value="${esc(o)}"${o===cur?' selected':''}>${esc(o)}</option>`).join('')+`<option value="__other__"${(has(cur)&&options.indexOf(cur)<0)?' selected':''}>Outro…</option>`; }
+function vsel(label,src,id,val,options,sync,req,hkey,onchange){
+  const srcL=src==='xsd'?'XSD':src==='am'?'ARCHIVEMATICA':src==='dd'?'DICIONÁRIO':'';
+  const srcSpan=src?`<span class="src ${src}">${srcL}</span>`:'';
+  const ast=req?'<span class="req">*</span>':'';
+  const hk=hkey||(label||'').replace(/\s*\([^)]*\)/g,'').replace(/^.*:\s*/,'').trim();
+  const other=has(val)&&options.indexOf(val)<0; const sy=sync||'syncObj';
+  const oc=onchange||`vselOther(this);${sy}()`;
+  return `<div class="field"><label>${label}${ast}${srcSpan}${helpIcon(hk)}</label>
+    <select id="${id}" onchange="${oc}">${vopt(options,val)}</select>
+    <input id="${id}_o" value="${esc(other?val:'')}" placeholder="valor fora do vocabulário" oninput="${sy}()"${other?'':' style="display:none"'}></div>`;
+}
+function vselOther(sel){ const inp=document.getElementById(sel.id+'_o'); if(inp){ const on=sel.value==='__other__'; inp.style.display=on?'':'none'; if(on){ try{inp.focus();}catch(e){} } } }
+function gvsel(id){ const s=document.getElementById(id); if(!s||s.tagName!=='SELECT') return null; if(s.value==='__other__'){ const o=document.getElementById(id+'_o'); return o?o.value:''; } return s.value; }
+function relTypeChanged(i){
+  const t=document.getElementById('rel_t_'+i); if(t) vselOther(t);
+  const s=document.getElementById('rel_s_'+i);
+  if(s){ const tv=(t&&t.value==='__other__')?'':(t?t.value:''); const subs=RELSUB[normv(tv)]||[]; const cur=gvsel('rel_s_'+i)||'';
+    s.innerHTML=vopt(subs,cur); const so=document.getElementById('rel_s_'+i+'_o'); const other=has(cur)&&subs.indexOf(cur)<0; if(so){ so.style.display=other?'':'none'; if(!other) so.value=''; } }
+  syncObj();
+}
+/* recíproco automático: para cada relação com recíproco, garante o inverso no objeto-alvo */
+function applyReciprocals(){
+  let added=0;
+  model.objects.forEach(o=>{ (o.relationships||[]).forEach(rel=>{
+    const rec=RECIP[normv(rel.subType)]; if(!rec) return;
+    (rel.relObjects||[]).forEach(tLid=>{ if(tLid===o.lid) return; const t=model.objects.find(x=>x.lid===tLid); if(!t) return;
+      const dup=(t.relationships||[]).some(r2=>normv(r2.subType)===normv(rec)&&(r2.relObjects||[]).includes(o.lid));
+      if(!dup){ const nr=mk.relationship(); nr.type=rel.type; nr.subType=rec; nr.relObjects=[o.lid]; t.relationships=t.relationships||[]; t.relationships.push(nr); added++; }
+    });
+  }); });
+  return added;
+}
 function renderObjectForm(){
   const o = objDraft;
   const t = o.objType||'file';
@@ -1434,7 +1485,7 @@ function renderObjectForm(){
   (o.relationships||[]).forEach((rel,i)=>{
     const others = model.objects; // pode relacionar com qualquer objeto já no modelo
     h += `<div class="rep-item"><div class="rh"><span>relação ${i+1}</span><button class="rm-x" onclick="rmRep('relationships',${i})">×</button></div>
-      <div class="field-row">${fld('relationshipType','xsd',`rel_t_${i}`,rel.type,'ex.: structural, derivation','',true,'syncObj','relationshipType')}${fld('relationshipSubType','xsd',`rel_s_${i}`,rel.subType,'ex.: isPartOf','',true,'syncObj','relationshipSubType')}</div>
+      <div class="field-row">${vsel('relationshipType','xsd',`rel_t_${i}`,rel.type,RELTYPES,'syncObj',true,'relationshipType',`relTypeChanged(${i})`)}${vsel('relationshipSubType','xsd',`rel_s_${i}`,rel.subType,RELSUB[normv(rel.type)]||[],'syncObj',true,'relationshipSubType')}</div>
       <label style="font-size:11px;font-weight:600">relatedObjectIdentifier<span class="req">*</span> [1..n] — objetos do modelo · seq = ordem ${helpIcon('relatedObjectSequence')}</label>
       ${others.length? others.map(t=>`<div class="chk"><input type="checkbox" id="relo_${i}_${t.lid}" ${rel.relObjects.includes(t.lid)?'checked':''} onchange="syncObj()"><label style="font-weight:400;margin:0;flex:1" for="relo_${i}_${t.lid}">${t.lid} · ${esc(t.originalName||(t.identifiers[0]?t.identifiers[0].value:''))}</label><input type="number" min="1" class="seq-in" id="reloseq_${i}_${t.lid}" value="${esc(((rel.relObjSeq||{})[t.lid])||'')}" placeholder="seq" title="relatedObjectSequence — ordem" oninput="syncObj()"></div>`).join('') : '<div class="empty">Nenhum objeto no modelo ainda para relacionar.</div>'}
       <label style="font-size:11px;font-weight:600;margin-top:6px">relatedEventIdentifier [0..n]</label>
@@ -1467,6 +1518,7 @@ function syncObj(){
   /* gn: null se o campo não está no DOM (bloco oculto pelo tipo) — preserva rascunho; '' se visível e vazio — permite limpar */
   const gn=id=>{const el=document.getElementById(id);return el?el.value:null;};
   const set=(obj,key,id)=>{const v=gn(id); if(v!==null) obj[key]=v;};
+  const setV=(obj,key,id)=>{const v=gvsel(id); if(v!==null) obj[key]=v;};
   const gc=id=>{const el=document.getElementById(id);return el?el.checked:null;};
   const tSel=document.getElementById('o_type'); if(tSel) o.objType=tSel.value;
   o.identifiers.forEach((id,i)=>{set(id,'type',`id_t_${i}`);set(id,'value',`id_v_${i}`);});
@@ -1487,7 +1539,7 @@ function syncObj(){
   (o.envRegistries||[]).forEach((r,i)=>{set(r,'name',`er_n_${i}`);set(r,'key',`er_k_${i}`);set(r,'role',`er_r_${i}`);});
   o.envExts=readExts('envExts', o.envExts);
   (o.relationships||[]).forEach((rel,i)=>{
-    set(rel,'type',`rel_t_${i}`); set(rel,'subType',`rel_s_${i}`);
+    setV(rel,'type',`rel_t_${i}`); setV(rel,'subType',`rel_s_${i}`);
     if(document.getElementById(`rel_t_${i}`)){
       rel.relObjects=model.objects.filter(t=>gc(`relo_${i}_${t.lid}`)===true).map(t=>t.lid);
       rel.relEvents=model.events.filter(e=>gc(`rele_${i}_${e.lid}`)===true).map(e=>e.lid);
@@ -1512,7 +1564,8 @@ function addSub(ci,coll){ syncObj(); const f={fixities:mk.fixity,formats:mk.form
 function addFmtNote(ci,mi){ syncObj(); const f=objDraft.characteristics[ci].formats[mi]; if(!f.notes)f.notes=[]; f.notes.push(''); renderForm(); }
 function rmFmtNote(ci,mi,ni){ syncObj(); objDraft.characteristics[ci].formats[mi].notes.splice(ni,1); renderForm(); }
 function rmSub(ci,coll,i){ syncObj(); objDraft.characteristics[ci][coll].splice(i,1); renderForm(); }
-function commitObject(){ syncObj(); const c=JSON.parse(JSON.stringify(objDraft)); if(editing.object){ const i=model.objects.findIndex(o=>o.lid===editing.object); if(i>=0)model.objects[i]=c; else model.objects.push(c); editing.object=null; } else model.objects.push(c); objDraft = mk.object(); renderForm(); renderModel(); renderOutput(); }
+function toast(msg){ let t=document.getElementById('toast'); if(!t){ t=document.createElement('div'); t.id='toast'; document.body.appendChild(t); } t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),3800); }
+function commitObject(){ syncObj(); const c=JSON.parse(JSON.stringify(objDraft)); if(editing.object){ const i=model.objects.findIndex(o=>o.lid===editing.object); if(i>=0)model.objects[i]=c; else model.objects.push(c); editing.object=null; } else model.objects.push(c); objDraft = mk.object(); const nRec=applyReciprocals(); renderForm(); renderModel(); renderOutput(); if(nRec) toast(nRec+' relação recíproca criada automaticamente no(s) objeto(s)-alvo.'); }
 
 /* ====================== EVENT ====================== */
 function renderEventForm(){
