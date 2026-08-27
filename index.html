@@ -349,7 +349,7 @@ const mk = {
   eventOutcomeInfo: ()=>({outcome:'', detailNote:'',exts:[]}),
   linkingAgent: ()=>({agentLid:'', role:''}),    // vínculo por seleção + papel
   linkingObject: ()=>({objectLid:'', role:''}),
-  event: ()=>({ lid:newLid('evt'), idType:'', idValue:'', eventType:'', dateTime:'', details:[], outcomes:[], linkAgents:[], linkObjects:[] }),
+  event: ()=>({ lid:newLid('evt'), idType:'', idValue:'', eventType:'', evtAuth:'', evtURI:'', dateTime:'', details:[], outcomes:[], linkAgents:[], linkObjects:[] }),
   // agent completo
   agentIdentifier: ()=>({type:'',value:''}),
   agentName: ()=>({value:''}),
@@ -603,7 +603,7 @@ function genEvent(e, L){
   L.push(elv('eventIdentifierType', e.idType, 6));
   L.push(elv('eventIdentifierValue', e.idValue, 6));
   L.push(`    </premis:eventIdentifier>`);
-  L.push(elv('eventType', e.eventType, 4));
+  { let et=''; if(has(e.evtAuth)) et+=` authority="${esc(e.evtAuth)}"`; if(has(e.evtURI)) et+=` valueURI="${esc(e.evtURI)}"`; L.push(`    <premis:eventType${et}>${esc(e.eventType)}</premis:eventType>`); }
   L.push(elv('eventDateTime', e.dateTime, 4));
   (e.details||[]).forEach(d=>{
     if(!has(d.detail)&&!(d.exts||[]).some(extHas)) return;
@@ -941,8 +941,12 @@ function validate(profile){
 
   /* ---- Camada DD — recomendações do dicionário (nível "should": avisam, não bloqueiam) ---- */
   const NORM=s=>(s||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+  /* eventType: vocabulário oficial da LoC — 50 termos, código→rótulo (id.loc.gov/vocabulary/preservation/eventType).
+     Substitui a lista antiga (subconjunto do PREMIS 2.x: faltavam dsg/dig(v3)/ipc/ipm/ips/mee/mem/int/cop/fil/acc/app/prt
+     e havia 'dispatch'/'display'/'exportation', que não são os rótulos oficiais). */
+  const EVENTTYPE_VOCAB={acc:"accession",app:"appraisal",cap:"capture",cop:"compiling",com:"compression",cre:"creation",dea:"deaccession",dec:"decompression",der:"decryption",del:"deletion",dsg:"digital signature generation",dig:"digital signature validation",dsp:"displaying",dis:"dissemination",enc:"encryption",exe:"execution",exp:"exporting",ext:"extraction",fil:"filename change",fix:"fixity check",ffa:"forensic feature analysis",for:"format identification",ima:"imaging",ipc:"information package creation",ipm:"information package merging",ips:"information package splitting",ing:"ingestion",ine:"ingestion end",ins:"ingestion start",int:"interpreting",mes:"message digest calculation",mee:"metadata extraction",mem:"metadata modification",mig:"migration",mod:"modification",nor:"normalization",pac:"packing",poa:"policy assignment",prt:"printing",qua:"quarantine",rec:"recovery",red:"redaction",ref:"refreshment",ren:"rendering",rep:"replication",tra:"transfer",unp:"unpacking",unq:"unquarantine",val:"validation",vir:"virus check"};
+  const EVENTTYPE_BYLABEL={}; Object.keys(EVENTTYPE_VOCAB).forEach(k=>{ EVENTTYPE_BYLABEL[NORM(EVENTTYPE_VOCAB[k])]=k; });
   const DDVOC={
-    eventType:["capture","compression","creation","deaccession","decompression","decryption","deletion","digitalsignaturevalidation","dispatch","display","dissemination","encryption","execution","exportation","extraction","fixitycheck","forensicfeatureanalysis","formatidentification","imaging","ingestion","ingestionend","ingestionstart","messagedigestcalculation","migration","modification","normalization","packing","policyassignment","quarantine","recovery","redaction","refreshment","rendering","replication","transfer","unpacking","unquarantine","validation","viruscheck"],
     agentType:["person","organization","software","hardware"],
     relationshipType:["structural","derivation","dependency","logical","reference","replacement"],
     copyrightStatus:["copyrighted","publicdomain","unknown"],
@@ -967,7 +971,31 @@ function validate(profile){
       (o.preservationLevels||[]).forEach((p,i)=>dchk(p.dateAssigned,`${ref}/preservationLevel[${i+1}]`,'preservationLevelDateAssigned')); }
     (o.relationships||[]).forEach((rel,ri)=>{ const rref=`${ref}/relationship[${ri+1}]`; vchk('relationshipType', rel.type, rref); if(rel.relObjSeq && Object.keys(rel.relObjSeq).length && !/structural/i.test(rel.type||'')) add('warn','dd',`${rref}: relatedObjectSequence só se aplica a relação structural (DD).`); });
   });
-  model.events.forEach(e=>vchk('eventType', e.eventType, `event ${e.lid}`));
+  model.events.forEach(e=>{
+    const ref = has(e.idValue) ? `event "${e.idValue}"${e.lid?` (${e.lid})`:''}` : `event ${e.lid}`;
+    const label=e.eventType||'', normLbl=NORM(label);
+    const codeOfLabel=EVENTTYPE_BYLABEL[normLbl], inLoC=!!codeOfLabel;
+    const uri=(e.evtURI||'').trim(), auth=(e.evtAuth||'').trim();
+    if(uri && /eventtype\//i.test(uri)){
+      /* Bug 3 — código × rótulo (só eventType): confronta o último segmento do valueURI com o rótulo oficial */
+      const code=uri.replace(/[#\/]+$/,'').split('/').pop().toLowerCase();
+      const official=EVENTTYPE_VOCAB[code];
+      if(!official) add('bad','dd',`${ref}: eventType @valueURI aponta para "${code}", código inexistente no vocabulário eventType da LoC.`);
+      else if(NORM(official)!==normLbl) add('bad','dd',`${ref}: eventType @valueURI ".../${code}" corresponde a "${official}", mas o rótulo do elemento é "${label}" — corrija um dos dois.`);
+      /* código casa com o rótulo: válido, sem mensagem */
+    } else {
+      /* Bug 2 — @authority + rótulo (sem valueURI) */
+      const authLoC = !auth || /^eventtype$/i.test(auth);
+      if(authLoC){
+        if(!inLoC && has(label)) add('warn','dd',`${ref}: eventType="${label}" fora do vocabulário controlado da LoC (recomendado; não bloqueia).`);
+        /* rótulo na lista LoC e @authority ausente/eventType: válido, sem menção */
+      } else if(inLoC){
+        add('info','dd',`${ref}: eventType="${label}" sob @authority="${auth}" (vocabulário próprio), mas coincide com um termo oficial da LoC — verifique se não era para usar o vocabulário controlado.`);
+      } else {
+        add('info','dd',`${ref}: eventType="${label}" sob @authority="${auth}" (vocabulário próprio declarado) — o PREMIS permite; não é aviso.`);
+      }
+    }
+  });
   model.agents.forEach(a=>vchk('agentType', a.agentType, `agent ${a.lid}`));
   model.rights.forEach(r=>{
     const ref=`rights ${r.lid}`;
@@ -1489,7 +1517,8 @@ function renderEventForm(){
   h += `<div class="block"><div class="bh"><span class="bt">eventIdentifier<span class="req">*</span> <span class="card-c">1..1</span>${helpIcon('eventIdentifier')}</span></div><div class="bb">
     <div class="field-row">${fld('Type','xsd','ev_idt',e.idType,'ex.: UUID','',true,'syncEvt','eventIdentifier')}${fld('Value','xsd','ev_idv',e.idValue,'ex.: NRI-016','',true,'syncEvt')}</div></div></div>`;
   h += `<div class="block"><div class="bh"><span class="bt">eventType<span class="req">*</span> <span class="card-c">1..1</span>${helpIcon('eventType')}</span></div><div class="bb">
-    ${fld('eventType','xsd','ev_type',e.eventType,'ex.: ingestion, virus check','',true,'syncEvt','eventType')}</div></div>`;
+    ${fld('eventType','xsd','ev_type',e.eventType,'ex.: ingestion, virus check','',true,'syncEvt','eventType')}
+    <div class="field-row">${fld('@authority','dd','ev_auth',e.evtAuth,'ex.: eventType (LoC) ou perfil-local','deixe vazio ou "eventType" p/ vocabulário oficial; um valor próprio marca vocabulário local',false,'syncEvt')}${fld('@valueURI','dd','ev_uri',e.evtURI,'…/eventType/ing','URI do termo no vocabulário controlado, se houver',false,'syncEvt')}</div></div></div>`;
   h += `<div class="block"><div class="bh"><span class="bt">eventDateTime<span class="req">*</span> <span class="card-c">1..1</span>${helpIcon('eventDateTime')}</span></div><div class="bb">
     ${fld('eventDateTime','am','ev_dt',e.dateTime,'2019-07-04T22:46:07+00:00','XSD=xs:string; Archivematica exige ISO 8601.',true,'syncEvt','eventDateTime')}</div></div>`;
 
@@ -1531,7 +1560,7 @@ function renderEventForm(){
 function syncEvt(){
   const e=evtDraft;
   const g=id=>{const el=document.getElementById(id);return el?el.value:'';};
-  e.idType=g('ev_idt');e.idValue=g('ev_idv');e.eventType=g('ev_type');e.dateTime=g('ev_dt');
+  e.idType=g('ev_idt');e.idValue=g('ev_idv');e.eventType=g('ev_type');e.evtAuth=g('ev_auth');e.evtURI=g('ev_uri');e.dateTime=g('ev_dt');
   e.details.forEach((d,i)=>{d.detail=g(`ev_det_${i}`);d.exts=readExts('details.'+i+'.exts', d.exts);});
   e.outcomes.forEach((o,i)=>{o.outcome=g(`ev_out_${i}`);o.detailNote=g(`ev_outn_${i}`);o.exts=readExts('outcomes.'+i+'.exts', o.exts);});
   e.linkAgents.forEach((la,i)=>{la.agentLid=g(`ev_la_${i}`)||(model.agents[0]&&model.agents[0].lid)||'';la.role=g(`ev_lar_${i}`);});
@@ -2267,7 +2296,7 @@ function parsePremisXML(xmlString){
   xCh(root,'event').forEach(eel=>{
     const e=mk.event(); e.lid=nlid('evt');
     const idEl=xC1(eel,'eventIdentifier'); e.idType=idEl?xT(idEl,'eventIdentifierType'):''; e.idValue=idEl?xT(idEl,'eventIdentifierValue'):'';
-    e.eventType=xT(eel,'eventType'); e.dateTime=xT(eel,'eventDateTime');
+    const etEl=xC1(eel,'eventType'); e.eventType=etEl?(etEl.textContent||'').trim():''; e.evtAuth=etEl?(etEl.getAttribute('authority')||''):''; e.evtURI=etEl?(etEl.getAttribute('valueURI')||''):''; e.dateTime=xT(eel,'eventDateTime');
     e.details=xCh(eel,'eventDetailInformation').map(d=>({detail:xT(d,'eventDetail'),exts:xCh(d,'eventDetailExtension').map(el=>({a:xAttrs(el),x:xRawInner(el)})).filter(it=>it.x||it.a)}));
     e.outcomes=xCh(eel,'eventOutcomeInformation').map(oi=>{ const od=xC1(oi,'eventOutcomeDetail'); return {outcome:xT(oi,'eventOutcome'),detailNote:od?xT(od,'eventOutcomeDetailNote'):'',exts:od?xCh(od,'eventOutcomeDetailExtension').map(el=>({a:xAttrs(el),x:xRawInner(el)})).filter(it=>it.x||it.a):[]}; });
     e._la=xCh(eel,'linkingAgentIdentifier').map(x=>({type:xT(x,'linkingAgentIdentifierType'),value:xT(x,'linkingAgentIdentifierValue'),role:xT(x,'linkingAgentRole')}));

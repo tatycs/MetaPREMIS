@@ -79,12 +79,41 @@ R3.5 — Rights não entram no premis.xml de importação.
 Direitos entram por rights.csv ou pela interface. [INFORMATIVO; rights omitidos do XML]
 Fonte: Archivematica 1.18 — Import metadata / PREMIS metadata.
 
+## Vocabulário de eventType — regra específica (código × rótulo + @authority)
+
+Diferente dos demais vocabulários (que só recebem sugestão), o `eventType` tem verificação
+dedicada, contra a lista **oficial da LoC** (50 termos, código→rótulo):
+`id.loc.gov/vocabulary/preservation/eventType`.
+
+- **@authority ausente ou ="eventType"** com rótulo na lista → válido, sem mensagem.
+- **@authority própria** (ex.: `perfil-local`) → **nota informativa** (não é aviso): o PREMIS
+  permite vocabulário próprio declarado ("It does not require specific controlled vocabularies").
+  Se o rótulo coincidir com um termo oficial, a nota alerta para possível engano.
+- **@authority ausente e rótulo fora da lista** → **aviso** (recomendado; não bloqueia).
+- **@valueURI presente** (`…/eventType/<código>`) → confronto **código × rótulo**:
+  código inexistente → **erro** (bloqueia); código existe mas rótulo diverge do oficial →
+  **erro**, citando os dois; código casa com o rótulo → válido.
+- Toda mensagem cita o **`eventIdentifierValue`** do arquivo (e o id interno entre parênteses).
+
+Escopo: a regra código × rótulo vale **apenas para eventType** — os demais vocabulários
+(rightsBasis, relationshipSubType, act, etc.) seguem só como sugestão, por não terem sido
+verificados contra a fonte.
+
+### Diff da lista embutida (indica a origem)
+A lista anterior tinha 39 rótulos **sem código**, um subconjunto do **PREMIS 2.x**:
+- **faltavam (adições da v3):** accession, appraisal, compiling, digital signature generation,
+  filename change, information package creation/merging/splitting, interpreting, metadata
+  extraction, metadata modification, printing;
+- **rótulos não oficiais:** `dispatch` (inexistente), `display` (oficial: *displaying* / `dsp`),
+  `exportation` (oficial: *exporting* / `exp`).
+Substituída pela tabela oficial dos 50 termos com código e rótulo.
+
 ## Limites declarados (o que NÃO é verificado)
 
-- Vocabulários controlados (eventType, relationshipSubType, etc.): o PREMIS recomenda
-  valores de vocabulário, mas não os torna obrigatórios nem fixa uma lista única
-  ("different repositories will use different vocabularies"). Logo, o validador NÃO
-  rejeita valores fora de vocabulário; apenas oferece os oficiais como sugestão na ajuda.
+- Vocabulários controlados (relationshipSubType, rightsBasis, act, etc. — **exceto eventType**,
+  ver seção acima): o PREMIS recomenda valores de vocabulário, mas não os torna obrigatórios
+  nem fixa uma lista única ("different repositories will use different vocabularies"). Logo, o
+  validador NÃO rejeita valores fora de vocabulário; apenas oferece os oficiais como sugestão.
   Fonte: PREMIS DD — "Value should be taken from a controlled vocabulary" (recomendação).
 - Conteúdo de elementos *Extension (xs:any): validade depende de schema externo, fora de escopo.
 - Formato de datas EDTF: o XSD define edtfSimpleType como equivalente a xs:string; não há
