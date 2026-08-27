@@ -978,7 +978,8 @@ function validate(profile){
     (o.relationships||[]).forEach((rel,ri)=>{ const rref=`${ref}/relationship[${ri+1}]`; vchk('relationshipType', rel.type, rref);
       if(has(rel.subType)){ const nsub=normv(rel.subType), owner=RELSUB_TYPEOF[nsub];
         if(!owner) add('warn','dd',`${rref}: relationshipSubType="${rel.subType}" fora do vocabulário controlado da LoC (recomendado; não bloqueia).`);
-        else if(has(rel.type)&&normv(rel.type)!==owner) add('warn','dd',`${rref}: relationshipSubType="${rel.subType}" pertence ao tipo "${owner}", mas relationshipType="${rel.type}" — ajuste um dos dois.`); }
+        else if(has(rel.type)&&normv(rel.type)!==owner) add('warn','dd',`${rref}: relationshipSubType="${rel.subType}" pertence ao tipo "${owner}", mas relationshipType="${rel.type}" — ajuste um dos dois.`);
+        const _sr=STRUCT_RULES[nsub]; if(_sr){ const cO=CATOF[normv(o.objType)]; (rel.relObjects||[]).forEach(tLid=>{ const tt=model.objects.find(x=>x.lid===tLid); if(!tt) return; const cT=CATOF[normv(tt.objType)]; if(cO&&cT&&_sr.indexOf(cO+'>'+cT)<0) add('warn','dd',`${rref}: "${rel.subType}" não é válido entre ${o.objType} e ${tt.objType} (regra de objectCategory do PREMIS).`); }); } }
       if(rel.relObjSeq && Object.keys(rel.relObjSeq).length && !/structural/i.test(rel.type||'')) add('warn','dd',`${rref}: relatedObjectSequence só se aplica a relação structural (DD).`); });
   });
   model.events.forEach(e=>{
@@ -1099,7 +1100,7 @@ const HELP = {
   /* event */
   'eventIdentifier': {t:'Designação que identifica o evento de forma inequívoca. Obrigatório. Composto por type e value.', src:'dd'},
   'eventType': {t:'Categoria/ação do evento (ex.: ingestion, migration, virus check, message digest calculation, fixity check). Vocabulário controlado.', src:'evType', voc:'evType'},
-  'eventDateTime': {t:'Data e hora em que o evento ocorreu. No XSD é xs:string (sem validação de formato); o Archivematica exige ISO 8601, ex.: 2019-07-04T22:46:07+00:00.', src:'am'},
+  'eventDateTime': {t:'A data e hora única (ou o intervalo) em que o evento ocorreu. DD: usar forma estruturada e convenção padronizada; registrar o horário mais específico possível e designar o fuso (ex.: 2006-07-16T19:20:30+01:00).', src:'dd'},
   'eventDetailInformation': {t:'Informação adicional sobre o evento, em texto livre (eventDetail).', src:'dd'},
   'eventOutcomeInformation': {t:'Resultado do evento (eventOutcome) e detalhamento opcional (eventOutcomeDetail).', src:'dd'},
   'linkingAgentIdentifier': {t:'Vínculo a um agente associado ao evento. Pode indicar o papel do agente (linkingAgentRole). Opcional no XSD; o Archivematica espera um agente por evento.', src:'dd'},
@@ -1296,6 +1297,9 @@ const RELSUB={ dependency:['deploys','is Compatible With','is Deployed On','is R
   replacement:['emulates','is Emulated By','is Superseded By','supersedes'],
   structural:['has Part','has Root','has Sibling','includes','is Included In','is Part Of','is Represented By','represents'] };
 const RELSUB_TYPEOF={}; Object.keys(RELSUB).forEach(t=>RELSUB[t].forEach(s=>RELSUB_TYPEOF[normv(s)]=t));
+/* regras de objectCategory × subtipo structural (hierarquia PREMIS): catO>catT permitidos */
+const CATOF={intellectualentity:'ie',representation:'rep',file:'file',bitstream:'bit'};
+const STRUCT_RULES={ ispartof:['ie>ie','rep>rep','file>file','bit>bit'], haspart:['ie>ie','rep>rep','file>file','bit>bit'], isrepresentedby:['ie>rep','ie>file','ie>bit'], represents:['rep>ie','file>ie','bit>ie'], includes:['rep>file','rep>bit','file>bit'], isincludedin:['file>rep','bit>file','bit>rep'], hasroot:['rep>file'] };
 /* vocabulários controlados da LoC (id.loc.gov/vocabulary/preservation), rótulos oficiais — para menus + "Outro" */
 const LOCVOC={
   actionsGranted:["delete","disseminate","migrate","modify","replicate","use"],
@@ -1606,7 +1610,7 @@ function renderEventForm(){
     ${vsel('eventType','xsd','ev_type',e.eventType,LOCVOC.eventType,'syncEvt',true,'eventType')}
     <div class="field-row">${fld('@authority','dd','ev_auth',e.evtAuth,'ex.: eventType (LoC) ou perfil-local','deixe vazio ou "eventType" p/ vocabulário oficial; um valor próprio marca vocabulário local',false,'syncEvt')}${fld('@valueURI','dd','ev_uri',e.evtURI,'…/eventType/ing','URI do termo no vocabulário controlado, se houver',false,'syncEvt')}</div></div></div>`;
   h += `<div class="block"><div class="bh"><span class="bt">eventDateTime<span class="req">*</span> <span class="card-c">1..1</span>${helpIcon('eventDateTime')}</span></div><div class="bb">
-    ${fld('eventDateTime','am','ev_dt',e.dateTime,'2019-07-04T22:46:07+00:00','XSD=xs:string; Archivematica exige ISO 8601.',true,'syncEvt','eventDateTime')}</div></div>`;
+    ${fld('eventDateTime','dd','ev_dt',e.dateTime,'2006-07-16T19:20:30+01:00','DD (2.3): forma estruturada e convenção padronizada; registre o horário mais específico possível e designe o fuso.',true,'syncEvt','eventDateTime')}</div></div>`;
 
   h += `<div class="block ${collapsed['e_det']!==false?'collapsed':''}">${blockHead('e_det','eventDetailInformation','0..n',false,'eventDetailInformation')}<div class="bb">`;
   e.details.forEach((d,i)=>{ h += `<div class="rep-item"><div class="rh"><span>detalhe ${i+1}</span><button class="rm-x" onclick="rmEvt('details',${i})">×</button></div>${fld('eventDetail','dd',`ev_det_${i}`,d.detail,'descrição','',false,'syncEvt')}${extList('eventDetailExtension','details.'+i+'.exts',d.exts)}</div>`; });
