@@ -1976,7 +1976,7 @@ function renderModel(){
   const used={events:new Set(),agents:new Set(),rights:new Set()};
   const findObj=lid=>model.objects.find(o=>o.lid===lid);
   const findAg=lid=>model.agents.find(a=>a.lid===lid);
-  const btns=(coll,lid)=>` <button class="tbtn-ed" onclick="editEnt('${coll}','${lid}')">editar</button><button class="tbtn-x" title="remover" onclick="removeEnt('${coll}','${lid}')">×</button>`;
+  const btns=(coll,lid)=>` <button class="tbtn-ed" onclick="editEnt('${coll}','${lid}')">editar</button><button class="tbtn-ed" onclick="copyEnt('${coll}','${lid}')">copiar</button><button class="tbtn-x" title="remover" onclick="removeEnt('${coll}','${lid}')">×</button>`;
   const collId=id=>treeCollapsed.has(id)?' collapsed':'';
   const wrap=(id,inner,kids)=>{ const k=!!kids;
     const car=k?`<span class="tcar" onclick="toggleTree('${id}',this)">▾</span>`:`<span class="tcar-sp"></span>`;
@@ -2047,6 +2047,21 @@ function editEnt(coll,lid){
   document.getElementById('formHost').style.display=''; document.getElementById('importHost').style.display='none';
   renderForm();
   const p=document.getElementById('panel-origem'); if(p) p.scrollTop=0;
+}
+/* copiar: carrega uma copia da entidade no formulario como NOVA (novo lid interno, sem modo edicao) */
+function copyEnt(coll,lid){
+  const type={objects:'object',events:'event',agents:'agent',rights:'rights'}[coll];
+  const ent=model[coll].find(x=>x.lid===lid); if(!ent) return;
+  const copy=JSON.parse(JSON.stringify(ent));
+  copy.lid=newLid({object:'obj',event:'evt',agent:'agt',rights:'rgt'}[type]);
+  if(type==='object')objDraft=copy; else if(type==='event')evtDraft=copy; else if(type==='agent')agtDraft=copy; else rgtDraft=copy;
+  editing[type]=null; currentEnt=type; inputMode='form';
+  document.querySelectorAll('#entTabs button[data-ent]').forEach(b=>b.classList.toggle('on', b.dataset.ent===type));
+  document.getElementById('modeForm').classList.add('on'); document.getElementById('modeImport').classList.remove('on');
+  document.getElementById('formHost').style.display=''; document.getElementById('importHost').style.display='none';
+  renderForm();
+  const p=document.getElementById('panel-origem'); if(p) p.scrollTop=0;
+  toast('Cópia carregada no formulário — ajuste o identificador e salve como nova entidade.');
 }
 
 /* ---- saída ---- */
