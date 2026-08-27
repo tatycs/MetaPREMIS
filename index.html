@@ -1296,6 +1296,35 @@ const RELSUB={ dependency:['deploys','is Compatible With','is Deployed On','is R
   replacement:['emulates','is Emulated By','is Superseded By','supersedes'],
   structural:['has Part','has Root','has Sibling','includes','is Included In','is Part Of','is Represented By','represents'] };
 const RELSUB_TYPEOF={}; Object.keys(RELSUB).forEach(t=>RELSUB[t].forEach(s=>RELSUB_TYPEOF[normv(s)]=t));
+/* vocabulários controlados da LoC (id.loc.gov/vocabulary/preservation), rótulos oficiais — para menus + "Outro" */
+const LOCVOC={
+  actionsGranted:["delete","disseminate","migrate","modify","replicate","use"],
+  agentType:["hardware","organization","person","software"],
+  contentLocationType:["byte offset","EXT3","handle","NTFS","physical storage location","RFID","shelfmark","Uniform Resource Identifier"],
+  copyrightStatus:["copyrighted","public domain","unknown"],
+  cryptographicHashFunctions:["Adler-32","CRC32","HAVAL","MD2","MD5","MNP","SHA-1","SHA-256","SHA-384","SHA-512","TIGER","unknown","Whirlpool"],
+  environmentCharacteristic:["known to work","minimum","recommended","unspecified"],
+  environmentFunctionType:["ancillary","chip","driver","hardware","hardware architecture","hardware peripheral","input/output device","memory","operating system","plugin","processor","renderer","software","software application","software library","storage device"],
+  environmentPurpose:["compile","create","edit","interpret","render"],
+  environmentRegistryRole:["compatibility check","generalization","identification","specification"],
+  eventOutcome:["fail","success","warning"],
+  eventRelatedAgentRole:["authorizer","executing program","implementer","validator"],
+  eventRelatedObjectRole:["outcome","source"],
+  formatRegistryRole:["specification","validation profile"],
+  hardwareType:["input/output device","memory","processor","storage device"],
+  inhibitorTarget:["All Content","Play Function","Print Function"],
+  inhibitorType:["Blowfish","DES","Password protection","PGP"],
+  linkingEnvironmentRole:["byte code","disk image","source code"],
+  objectCategory:["bitstream","file","intellectual entity","representation"],
+  preservationLevelRole:["capability","intention","requirement"],
+  preservationLevelType:["bit level preservation","logical preservation"],
+  rightsRelatedAgentRole:["assignee","contact","grantor","rightsholder"],
+  signatureEncoding:["base64","ds:CryptoBinary"],
+  signatureMethod:["DSA-SHA1","RSA-SHA1"],
+  softwareType:["ancillary","driver","operating system","renderer"],
+  storageMedium:["hard disk","magnetic tape","TSM"],
+  eventType:["accession","appraisal","capture","compiling","compression","creation","deaccession","decompression","decryption","deletion","digital signature generation","digital signature validation","displaying","dissemination","encryption","execution","exporting","extraction","filename change","fixity check","forensic feature analysis","format identification","imaging","information package creation","information package merging","information package splitting","ingestion","ingestion end","ingestion start","interpreting","message digest calculation","metadata extraction","metadata modification","migration","modification","normalization","packing","policy assignment","printing","quarantine","recovery","redaction","refreshment","rendering","replication","transfer","unpacking","unquarantine","validation","virus check"]
+};
 /* recíprocos (chave = subtipo normalizado → rótulo do recíproco); hasSibling/isCompatibleWith são simétricos; hasRoot não tem */
 const RECIP={ ispartof:'has Part',haspart:'is Part Of',isincludedin:'includes',includes:'is Included In',isrepresentedby:'represents',represents:'is Represented By',hassource:'is Source Of',issourceof:'has Source',compressedfrom:'compressed to',compressedto:'compressed from',encryptedfrom:'encrypted to',encryptedto:'encrypted from',isrequiredby:'requires',requires:'is Required By',deploys:'is Deployed On',isdeployedon:'deploys',documents:'is Documented In',isdocumentedin:'documents',emulates:'is Emulated By',isemulatedby:'emulates',generalizes:'specializes',specializes:'generalizes',issupersededby:'supersedes',supersedes:'is Superseded By',hassibling:'has Sibling',iscompatiblewith:'is Compatible With' };
 function vopt(options,cur){ return `<option value="">— selecione —</option>`+options.map(o=>`<option value="${esc(o)}"${o===cur?' selected':''}>${esc(o)}</option>`).join('')+`<option value="__other__"${(has(cur)&&options.indexOf(cur)<0)?' selected':''}>Outro…</option>`; }
@@ -1363,7 +1392,7 @@ function renderObjectForm(){
   h += `<div class="block ${collapsed['o_pl']!==false?'collapsed':''}">${blockHead('o_pl','preservationLevel','0..n',false,'preservationLevel')}<div class="bb">`;
   o.preservationLevels.forEach((p,i)=>{
     h += `<div class="rep-item"><div class="rh"><span>nível ${i+1}</span><button class="rm-x" onclick="rmRep('preservationLevels',${i})">×</button></div>
-      ${fld('preservationLevelValue','xsd',`pl_v_${i}`,p.value,'ex.: full','',true)}<div class="field-row">${fld('Type','dd',`pl_t_${i}`,p.plType)}${fld('Role','dd',`pl_r_${i}`,p.role)}</div>${fld('Rationale','dd',`pl_ra_${i}`,p.rationale)}${fld('DateAssigned','dd',`pl_d_${i}`,p.dateAssigned)}</div>`;
+      ${fld('preservationLevelValue','xsd',`pl_v_${i}`,p.value,'ex.: full','',true)}<div class="field-row">${vsel('preservationLevelType','dd',`pl_t_${i}`,p.plType,LOCVOC.preservationLevelType,'syncObj',false,'preservationLevelType')}${vsel('preservationLevelRole','dd',`pl_r_${i}`,p.role,LOCVOC.preservationLevelRole,'syncObj',false,'preservationLevelRole')}</div>${fld('Rationale','dd',`pl_ra_${i}`,p.rationale)}${fld('DateAssigned','dd',`pl_d_${i}`,p.dateAssigned)}</div>`;
   });
   h += `<button class="add-btn" onclick="addRep('preservationLevels')">+ preservationLevel</button></div></div>`;
   }
@@ -1386,14 +1415,14 @@ function renderObjectForm(){
     h += `<div class="subblock"><div class="sh"><span>fixity [0..n]${helpIcon('fixity')}</span></div>`;
     c.fixities.forEach((f,fi)=>{
       h += `<div class="rep-item"><div class="rh"><span>fixity ${fi+1}</span><button class="rm-x" onclick="rmSub(${ci},'fixities',${fi})">×</button></div>
-        ${fld('messageDigestAlgorithm','xsd',`f_a_${ci}_${fi}`,f.algo,'ex.: SHA-256','',true,'syncObj','messageDigestAlgorithm')}${fld('messageDigest','xsd',`f_d_${ci}_${fi}`,f.digest,'valor do hash','',true,'syncObj','messageDigest')}${fld('messageDigestOriginator','dd',`f_o_${ci}_${fi}`,f.originator,'opcional')}</div>`;
+        ${vsel('messageDigestAlgorithm','xsd',`f_a_${ci}_${fi}`,f.algo,LOCVOC.cryptographicHashFunctions,'syncObj',true,'messageDigestAlgorithm')}${fld('messageDigest','xsd',`f_d_${ci}_${fi}`,f.digest,'valor do hash','',true,'syncObj','messageDigest')}${fld('messageDigestOriginator','dd',`f_o_${ci}_${fi}`,f.originator,'opcional')}</div>`;
     });
     h += `<button class="add-btn" onclick="addSub(${ci},'fixities')">+ fixity</button></div>`;
     h += `<div class="subblock"><div class="sh"><span>format <span class="req">*</span> [1..n]${helpIcon('format')}</span></div>`;
     c.formats.forEach((fmt,mi)=>{
       h += `<div class="rep-item"><div class="rh"><span>format ${mi+1}</span>${c.formats.length>1?`<button class="rm-x" onclick="rmSub(${ci},'formats',${mi})">×</button>`:''}</div>
         <div class="subblock"><div class="sh"><span>formatDesignation [0..1]${helpIcon('formatDesignation')}</span></div><div class="field-row">${fld('formatName','xsd',`fmt_n_${ci}_${mi}`,fmt.name,'ex.: MP3','',false,'syncObj','formatName')}${fld('formatVersion','dd',`fmt_v_${ci}_${mi}`,fmt.version,'opcional')}</div></div>
-        <div class="subblock"><div class="sh"><span>formatRegistry [0..1]${helpIcon('formatRegistry')}</span></div>${fld('formatRegistryName','xsd',`fmt_rn_${ci}_${mi}`,fmt.regName,'ex.: PRONOM','')}${fld('formatRegistryKey','xsd',`fmt_rk_${ci}_${mi}`,fmt.regKey,'ex.: fmt/134','')}${fld('formatRegistryRole','dd',`fmt_rr_${ci}_${mi}`,fmt.regRole,'opcional')}</div>
+        <div class="subblock"><div class="sh"><span>formatRegistry [0..1]${helpIcon('formatRegistry')}</span></div>${fld('formatRegistryName','xsd',`fmt_rn_${ci}_${mi}`,fmt.regName,'ex.: PRONOM','')}${fld('formatRegistryKey','xsd',`fmt_rk_${ci}_${mi}`,fmt.regKey,'ex.: fmt/134','')}${vsel('formatRegistryRole','dd',`fmt_rr_${ci}_${mi}`,fmt.regRole,LOCVOC.formatRegistryRole,'syncObj',false,'formatRegistryRole')}</div>
         <label style="font-size:11px;font-weight:600">formatNote [0..n]${helpIcon('formatNote')}</label>
         ${(fmt.notes||[]).map((n,ni)=>`<div style="display:flex;gap:6px;margin-bottom:6px"><input id="fmt_note_${ci}_${mi}_${ni}" value="${esc(n)}" placeholder="nota sobre o formato" oninput="syncObj()" style="flex:1;font-size:13.5px;padding:7px 9px;border:1px solid var(--line);border-radius:3px;background:var(--surface);color:var(--ink)"><button class="rm-x" onclick="rmFmtNote(${ci},${mi},${ni})" title="remover nota">×</button></div>`).join('')}
         <button class="add-btn" onclick="addFmtNote(${ci},${mi})">+ formatNote</button>
@@ -1410,7 +1439,7 @@ function renderObjectForm(){
     h += `<div class="subblock"><div class="sh"><span>inhibitors [0..n]${helpIcon('inhibitors')}</span></div>`;
     c.inhibitors.forEach((inh,ii)=>{
       h += `<div class="rep-item"><div class="rh"><span>inibidor ${ii+1}</span><button class="rm-x" onclick="rmSub(${ci},'inhibitors',${ii})">×</button></div>
-        ${fld('inhibitorType','xsd',`in_t_${ci}_${ii}`,inh.type,'ex.: encryption','',true)}${fld('inhibitorTarget','dd',`in_g_${ci}_${ii}`,inh.target,'opcional')}${fld('inhibitorKey','dd',`in_k_${ci}_${ii}`,inh.key,'opcional')}</div>`;
+        ${vsel('inhibitorType','xsd',`in_t_${ci}_${ii}`,inh.type,LOCVOC.inhibitorType,'syncObj',true,'inhibitorType')}${vsel('inhibitorTarget','dd',`in_g_${ci}_${ii}`,inh.target,LOCVOC.inhibitorTarget,'syncObj',false,'inhibitorTarget')}${fld('inhibitorKey','dd',`in_k_${ci}_${ii}`,inh.key,'opcional')}</div>`;
     });
     h += `<button class="add-btn" onclick="addSub(${ci},'inhibitors')">+ inhibitor</button></div>`;
     h += extList('objectCharacteristicsExtension','characteristics.'+ci+'.exts',c.exts);
@@ -1430,7 +1459,7 @@ function renderObjectForm(){
   h += `<div class="block ${collapsed['o_st']!==false?'collapsed':''}">${blockHead('o_st','storage','0..n',false,'storage')}<div class="bb">`;
   o.storages.forEach((s,i)=>{
     h += `<div class="rep-item"><div class="rh"><span>storage ${i+1}</span><button class="rm-x" onclick="rmRep('storages',${i})">×</button></div>
-      <div class="field-row">${fld('contentLocationType','xsd',`st_t_${i}`,s.locType,'','',true)}${fld('contentLocationValue','xsd',`st_v_${i}`,s.locValue,'','',true)}</div>${fld('storageMedium','dd',`st_m_${i}`,s.medium)}</div>`;
+      <div class="field-row">${vsel('contentLocationType','xsd',`st_t_${i}`,s.locType,LOCVOC.contentLocationType,'syncObj',true,'contentLocationType')}${fld('contentLocationValue','xsd',`st_v_${i}`,s.locValue,'','',true)}</div>${vsel('storageMedium','dd',`st_m_${i}`,s.medium,LOCVOC.storageMedium,'syncObj',false,'storageMedium')}</div>`;
   });
   h += `<button class="add-btn" onclick="addRep('storages')">+ storage</button></div></div>`;
   }
@@ -1440,9 +1469,9 @@ function renderObjectForm(){
   h += `<div class="block ${collapsed['o_sig']!==false?'collapsed':''}">${blockHead('o_sig','signatureInformation','0..n',false,'signatureInformation')}<div class="bb">`;
   (o.signatures||[]).forEach((s,i)=>{
     h += `<div class="rep-item"><div class="rh"><span>assinatura ${i+1}</span><button class="rm-x" onclick="rmRep('signatures',${i})">×</button></div>
-      ${fld('signatureEncoding','xsd',`sg_e_${i}`,s.encoding,'ex.: base64','',true,'syncObj','signatureEncoding')}
+      ${vsel('signatureEncoding','xsd',`sg_e_${i}`,s.encoding,LOCVOC.signatureEncoding,'syncObj',true,'signatureEncoding')}
       ${fld('signer','dd',`sg_s_${i}`,s.signer,'opcional')}
-      ${fld('signatureMethod','xsd',`sg_m_${i}`,s.method,'ex.: RSA, DSA','',true,'syncObj','signatureMethod')}
+      ${vsel('signatureMethod','xsd',`sg_m_${i}`,s.method,LOCVOC.signatureMethod,'syncObj',true,'signatureMethod')}
       ${ta('signatureValue','xsd',`sg_v_${i}`,s.value,'valor da assinatura','',true)}
       ${fld('signatureValidationRules','xsd',`sg_r_${i}`,s.rules,'regras de validação','',true)}
       ${fld('signatureProperties','dd',`sg_p_${i}`,s.properties,'opcional')}
@@ -1457,7 +1486,7 @@ function renderObjectForm(){
   h += `<div class="block ${collapsed['o_ef']!==false?'collapsed':''}">${blockHead('o_ef','environmentFunction','0..n',false,'environmentFunction')}<div class="bb">`;
   (o.envFunctions||[]).forEach((f,i)=>{
     h += `<div class="rep-item"><div class="rh"><span>função ${i+1}</span><button class="rm-x" onclick="rmRep('envFunctions',${i})">×</button></div>
-      <div class="field-row">${fld('environmentFunctionType','xsd',`ef_t_${i}`,f.fType,'ex.: software, hardware','',true,'syncObj','environmentFunction')}${fld('environmentFunctionLevel','xsd',`ef_l_${i}`,f.fLevel,'ex.: 1','',true)}</div></div>`;
+      <div class="field-row">${vsel('environmentFunctionType','xsd',`ef_t_${i}`,f.fType,LOCVOC.environmentFunctionType,'syncObj',true,'environmentFunction')}${fld('environmentFunctionLevel','xsd',`ef_l_${i}`,f.fLevel,'ex.: 1','',true)}</div></div>`;
   });
   h += `<button class="add-btn" onclick="addRep('envFunctions')">+ environmentFunction</button></div></div>`;
 
@@ -1474,7 +1503,7 @@ function renderObjectForm(){
   h += `<div class="block ${collapsed['o_er']!==false?'collapsed':''}">${blockHead('o_er','environmentRegistry','0..n',false,'environmentRegistry')}<div class="bb">`;
   (o.envRegistries||[]).forEach((r,i)=>{
     h += `<div class="rep-item"><div class="rh"><span>registro ${i+1}</span><button class="rm-x" onclick="rmRep('envRegistries',${i})">×</button></div>
-      <div class="field-row">${fld('environmentRegistryName','xsd',`er_n_${i}`,r.name,'ex.: WikiData','',true,'syncObj','environmentRegistry')}${fld('environmentRegistryKey','xsd',`er_k_${i}`,r.key,'','',true)}</div>${fld('environmentRegistryRole','dd',`er_r_${i}`,r.role,'opcional')}</div>`;
+      <div class="field-row">${fld('environmentRegistryName','xsd',`er_n_${i}`,r.name,'ex.: WikiData','',true,'syncObj','environmentRegistry')}${fld('environmentRegistryKey','xsd',`er_k_${i}`,r.key,'','',true)}</div>${vsel('environmentRegistryRole','dd',`er_r_${i}`,r.role,LOCVOC.environmentRegistryRole,'syncObj',false,'environmentRegistryRole')}</div>`;
   });
   h += `<button class="add-btn" onclick="addRep('envRegistries')">+ environmentRegistry</button></div></div>`;
   h += `<div class="block ${collapsed['o_ee']!==false?'collapsed':''}">${blockHead('o_ee','environmentExtension','0..n',false,'environmentExtension')}<div class="bb">${extList('environmentExtension','envExts',o.envExts,'environmentExtension')}</div></div>`;
@@ -1490,7 +1519,7 @@ function renderObjectForm(){
       ${others.length? others.map(t=>`<div class="chk"><input type="checkbox" id="relo_${i}_${t.lid}" ${rel.relObjects.includes(t.lid)?'checked':''} onchange="syncObj()"><label style="font-weight:400;margin:0;flex:1" for="relo_${i}_${t.lid}">${t.lid} · ${esc(t.originalName||(t.identifiers[0]?t.identifiers[0].value:''))}</label><input type="number" min="1" class="seq-in" id="reloseq_${i}_${t.lid}" value="${esc(((rel.relObjSeq||{})[t.lid])||'')}" placeholder="seq" title="relatedObjectSequence — ordem" oninput="syncObj()"></div>`).join('') : '<div class="empty">Nenhum objeto no modelo ainda para relacionar.</div>'}
       <label style="font-size:11px;font-weight:600;margin-top:6px">relatedEventIdentifier [0..n]</label>
       ${model.events.length? model.events.map(e=>`<div class="chk"><input type="checkbox" id="rele_${i}_${e.lid}" ${rel.relEvents.includes(e.lid)?'checked':''} onchange="syncObj()"><label style="font-weight:400;margin:0;flex:1" for="rele_${i}_${e.lid}">${e.lid} · ${esc(e.eventType||e.idValue)}</label><input type="number" min="1" class="seq-in" id="releseq_${i}_${e.lid}" value="${esc(((rel.relEvtSeq||{})[e.lid])||'')}" placeholder="seq" title="relatedEventSequence — ordem" oninput="syncObj()"></div>`).join('') : '<div class="empty">Sem eventos no modelo.</div>'}
-      <div class="field-row" style="margin-top:6px">${fld('relatedEnvironmentPurpose','dd',`rel_ep_${i}`,(rel.relEnvPurpose||[]).join(', '),'ex.: render','0..n — separe por vírgula')}${fld('relatedEnvironmentCharacteristic','dd',`rel_ec_${i}`,rel.relEnvChar||'','','0..1')}</div>
+      <div class="field-row" style="margin-top:6px">${fld('relatedEnvironmentPurpose','dd',`rel_ep_${i}`,(rel.relEnvPurpose||[]).join(', '),'ex.: render','0..n — separe por vírgula')}${vsel('relatedEnvironmentCharacteristic','dd',`rel_ec_${i}`,rel.relEnvChar||'',LOCVOC.environmentCharacteristic,'syncObj',false,'relatedEnvironmentCharacteristic')}</div>
     </div>`;
   });
   h += `<button class="add-btn" onclick="addRep('relationships')">+ relationship</button></div></div>`;
@@ -1516,7 +1545,7 @@ function renderObjectForm(){
 function syncObj(){
   const o=objDraft;
   /* gn: null se o campo não está no DOM (bloco oculto pelo tipo) — preserva rascunho; '' se visível e vazio — permite limpar */
-  const gn=id=>{const el=document.getElementById(id);return el?el.value:null;};
+  const gn=id=>{const el=document.getElementById(id); if(!el) return null; if(el.tagName==='SELECT'&&el.value==='__other__'){ const o=document.getElementById(id+'_o'); return o?o.value:''; } return el.value;};
   const set=(obj,key,id)=>{const v=gn(id); if(v!==null) obj[key]=v;};
   const setV=(obj,key,id)=>{const v=gvsel(id); if(v!==null) obj[key]=v;};
   const gc=id=>{const el=document.getElementById(id);return el?el.checked:null;};
@@ -1574,7 +1603,7 @@ function renderEventForm(){
   h += `<div class="block"><div class="bh"><span class="bt">eventIdentifier<span class="req">*</span> <span class="card-c">1..1</span>${helpIcon('eventIdentifier')}</span></div><div class="bb">
     <div class="field-row">${fld('Type','xsd','ev_idt',e.idType,'ex.: UUID','',true,'syncEvt','eventIdentifier')}${fld('Value','xsd','ev_idv',e.idValue,'ex.: NRI-016','',true,'syncEvt')}</div></div></div>`;
   h += `<div class="block"><div class="bh"><span class="bt">eventType<span class="req">*</span> <span class="card-c">1..1</span>${helpIcon('eventType')}</span></div><div class="bb">
-    ${fld('eventType','xsd','ev_type',e.eventType,'ex.: ingestion, virus check','',true,'syncEvt','eventType')}
+    ${vsel('eventType','xsd','ev_type',e.eventType,LOCVOC.eventType,'syncEvt',true,'eventType')}
     <div class="field-row">${fld('@authority','dd','ev_auth',e.evtAuth,'ex.: eventType (LoC) ou perfil-local','deixe vazio ou "eventType" p/ vocabulário oficial; um valor próprio marca vocabulário local',false,'syncEvt')}${fld('@valueURI','dd','ev_uri',e.evtURI,'…/eventType/ing','URI do termo no vocabulário controlado, se houver',false,'syncEvt')}</div></div></div>`;
   h += `<div class="block"><div class="bh"><span class="bt">eventDateTime<span class="req">*</span> <span class="card-c">1..1</span>${helpIcon('eventDateTime')}</span></div><div class="bb">
     ${fld('eventDateTime','am','ev_dt',e.dateTime,'2019-07-04T22:46:07+00:00','XSD=xs:string; Archivematica exige ISO 8601.',true,'syncEvt','eventDateTime')}</div></div>`;
@@ -1584,7 +1613,7 @@ function renderEventForm(){
   h += `<button class="add-btn" onclick="addEvt('details')">+ eventDetailInformation</button></div></div>`;
 
   h += `<div class="block ${collapsed['e_out']!==false?'collapsed':''}">${blockHead('e_out','eventOutcomeInformation','0..n',false,'eventOutcomeInformation')}<div class="bb">`;
-  e.outcomes.forEach((o,i)=>{ h += `<div class="rep-item"><div class="rh"><span>resultado ${i+1}</span><button class="rm-x" onclick="rmEvt('outcomes',${i})">×</button></div>${fld('eventOutcome','dd',`ev_out_${i}`,o.outcome,'ex.: Pass','',false,'syncEvt')}${fld('eventOutcomeDetailNote','dd',`ev_outn_${i}`,o.detailNote,'nota','',false,'syncEvt')}${extList('eventOutcomeDetailExtension','outcomes.'+i+'.exts',o.exts)}</div>`; });
+  e.outcomes.forEach((o,i)=>{ h += `<div class="rep-item"><div class="rh"><span>resultado ${i+1}</span><button class="rm-x" onclick="rmEvt('outcomes',${i})">×</button></div>${vsel('eventOutcome','dd',`ev_out_${i}`,o.outcome,LOCVOC.eventOutcome,'syncEvt',false,'eventOutcome')}${fld('eventOutcomeDetailNote','dd',`ev_outn_${i}`,o.detailNote,'nota','',false,'syncEvt')}${extList('eventOutcomeDetailExtension','outcomes.'+i+'.exts',o.exts)}</div>`; });
   h += `<button class="add-btn" onclick="addEvt('outcomes')">+ eventOutcomeInformation</button></div></div>`;
 
   h += `<div class="block ${collapsed['e_la']!==false?'collapsed':''}">${blockHead('e_la','linkingAgentIdentifier','0..n',false,'linkingAgentIdentifier')}<div class="bb">`;
@@ -1592,7 +1621,7 @@ function renderEventForm(){
     e.linkAgents.forEach((la,i)=>{
       h += `<div class="rep-item"><div class="rh"><span>vínculo ${i+1}</span><button class="rm-x" onclick="rmEvt('linkAgents',${i})">×</button></div>
         <div class="field"><label>agente</label><select id="ev_la_${i}" onchange="syncEvt()">${model.agents.map(a=>`<option value="${a.lid}" ${la.agentLid===a.lid?'selected':''}>${a.lid} · ${esc(a.identifiers[0]?a.identifiers[0].value:'')}</option>`).join('')}</select></div>
-        ${fld('linkingAgentRole','dd',`ev_lar_${i}`,la.role,'ex.: executing program','',false,'syncEvt')}</div>`;
+        ${vsel('linkingAgentRole','dd',`ev_lar_${i}`,la.role,LOCVOC.eventRelatedAgentRole,'syncEvt',false,'linkingAgentRole')}</div>`;
     });
     h += `<button class="add-btn" onclick="addEvt('linkAgents')">+ vincular agente</button>`;
   } else h += '<div class="empty">Nenhum agente no modelo. Crie agentes primeiro.</div>';
@@ -1603,7 +1632,7 @@ function renderEventForm(){
     e.linkObjects.forEach((lo,i)=>{
       h += `<div class="rep-item"><div class="rh"><span>vínculo ${i+1}</span><button class="rm-x" onclick="rmEvt('linkObjects',${i})">×</button></div>
         <div class="field"><label>objeto</label><select id="ev_lo_${i}" onchange="syncEvt()">${model.objects.map(o=>`<option value="${o.lid}" ${lo.objectLid===o.lid?'selected':''}>${o.lid} · ${esc(o.originalName||(o.identifiers[0]?o.identifiers[0].value:''))}</option>`).join('')}</select></div>
-        ${fld('linkingObjectRole','dd',`ev_lor_${i}`,lo.role,'opcional','',false,'syncEvt')}</div>`;
+        ${vsel('linkingObjectRole','dd',`ev_lor_${i}`,lo.role,LOCVOC.eventRelatedObjectRole,'syncEvt',false,'linkingObjectRole')}</div>`;
     });
     h += `<button class="add-btn" onclick="addEvt('linkObjects')">+ vincular objeto</button>`;
   } else h += '<div class="empty">Nenhum objeto no modelo.</div>';
@@ -1616,7 +1645,7 @@ function renderEventForm(){
 }
 function syncEvt(){
   const e=evtDraft;
-  const g=id=>{const el=document.getElementById(id);return el?el.value:'';};
+  const g=id=>{const el=document.getElementById(id); if(!el) return ''; if(el.tagName==='SELECT'&&el.value==='__other__'){ const o=document.getElementById(id+'_o'); return o?o.value:''; } return el.value;};
   e.idType=g('ev_idt');e.idValue=g('ev_idv');e.eventType=g('ev_type');e.evtAuth=g('ev_auth');e.evtURI=g('ev_uri');e.dateTime=g('ev_dt');
   e.details.forEach((d,i)=>{d.detail=g(`ev_det_${i}`);d.exts=readExts('details.'+i+'.exts', d.exts);});
   e.outcomes.forEach((o,i)=>{o.outcome=g(`ev_out_${i}`);o.detailNote=g(`ev_outn_${i}`);o.exts=readExts('outcomes.'+i+'.exts', o.exts);});
@@ -1643,7 +1672,7 @@ function renderAgentForm(){
   h += `<button class="add-btn" onclick="addAgt('names')">+ agentName</button></div></div>`;
 
   h += `<div class="block"><div class="bh"><span class="bt">agentType / agentVersion <span class="card-c">0..1</span></span></div><div class="bb">
-    ${fld('agentType','dd','ag_type',a.agentType,'ex.: organization, software','',false,'syncAgt','agentType')}
+    ${vsel('agentType','dd','ag_type',a.agentType,LOCVOC.agentType,'syncAgt',false,'agentType')}
     ${fld('agentVersion','dd','ag_ver',a.agentVersion,'ex.: 1.13.2','',false,'syncAgt','agentVersion')}</div></div>`;
 
   h += `<div class="block ${collapsed['a_nt']!==false?'collapsed':''}">${blockHead('a_nt','agentNote','0..n',false,'agentNote')}<div class="bb">`;
@@ -1664,7 +1693,7 @@ function renderAgentForm(){
   h += `<div class="block ${collapsed['a_lenv']!==false?'collapsed':''}">${blockHead('a_lenv','linkingEnvironmentIdentifier','0..n')}<div class="bb">`;
   (a.linkEnvironments||[]).forEach((le,i)=>{
     h += `<div class="rep-item"><div class="rh"><span>ambiente ${i+1}</span><button class="rm-x" onclick="rmAgt('linkEnvironments',${i})">×</button></div>
-      <div class="field-row">${fld('linkingEnvironmentIdentifierType','xsd',`ag_lenv_t_${i}`,le.type,'ex.: local','',true,'syncAgt')}${fld('linkingEnvironmentIdentifierValue','xsd',`ag_lenv_v_${i}`,le.value,'id do ambiente','',true,'syncAgt')}</div>${fld('linkingEnvironmentRole','dd',`ag_lenv_r_${i}`,le.role,'opcional','',false,'syncAgt')}</div>`;
+      <div class="field-row">${fld('linkingEnvironmentIdentifierType','xsd',`ag_lenv_t_${i}`,le.type,'ex.: local','',true,'syncAgt')}${fld('linkingEnvironmentIdentifierValue','xsd',`ag_lenv_v_${i}`,le.value,'id do ambiente','',true,'syncAgt')}</div>${vsel('linkingEnvironmentRole','dd',`ag_lenv_r_${i}`,le.role,LOCVOC.linkingEnvironmentRole,'syncAgt',false,'linkingEnvironmentRole')}</div>`;
   });
   h += `<button class="add-btn" onclick="addAgt('linkEnvironments')">+ linkingEnvironmentIdentifier</button>
     <div class="hint" style="margin-top:6px">Referência a um ambiente (na v3, um intellectualEntity de tipo environment). Entrada livre, pois o app não modela ambientes como entidades.</div></div></div>`;
@@ -1676,7 +1705,7 @@ function renderAgentForm(){
 }
 function syncAgt(){
   const a=agtDraft;
-  const g=id=>{const el=document.getElementById(id);return el?el.value:'';};
+  const g=id=>{const el=document.getElementById(id); if(!el) return ''; if(el.tagName==='SELECT'&&el.value==='__other__'){ const o=document.getElementById(id+'_o'); return o?o.value:''; } return el.value;};
   const gc=id=>{const el=document.getElementById(id);return el?el.checked:false;};
   a.identifiers.forEach((id,i)=>{id.type=g(`ag_idt_${i}`);id.value=g(`ag_idv_${i}`);});
   a.names.forEach((n,i)=>n.value=g(`ag_nm_${i}`));
@@ -1721,7 +1750,7 @@ function renderRightsForm(){
 
   if(r.basis==='copyright'){
     h += `<div class="block"><div class="bh"><span class="bt">copyrightInformation<span class="req">*</span> <span class="card-c">0..1</span></span></div><div class="bb">
-      <div class="field-row">${fld('copyrightStatus','xsd','rg_c_status',r.c_status,'ex.: copyrighted, public domain','',true,'syncRgt','copyrightStatus')}${fld('copyrightJurisdiction','xsd','rg_c_jur',r.c_jurisdiction,'ex.: BR (ISO 3166)','',true,'syncRgt','copyrightJurisdiction')}</div>
+      <div class="field-row">${vsel('copyrightStatus','xsd','rg_c_status',r.c_status,LOCVOC.copyrightStatus,'syncRgt',true,'copyrightStatus')}${fld('copyrightJurisdiction','xsd','rg_c_jur',r.c_jurisdiction,'ex.: BR (ISO 3166)','',true,'syncRgt','copyrightJurisdiction')}</div>
       ${fld('copyrightStatusDeterminationDate','dd','rg_c_date',r.c_date,'data EDTF','',false,'syncRgt')}
       ${noteList(r.c_notes,'c_notes','copyrightNote')}
       ${docList(r.c_docIds,'c_docIds','copyrightDocumentationIdentifier')}
@@ -1756,7 +1785,7 @@ function renderRightsForm(){
   h += `<div class="block ${collapsed['r_gr']!==false?'collapsed':''}">${blockHead('r_gr','rightsGranted','0..n',false,'rightsGranted')}<div class="bb">`;
   (r.granted||[]).forEach((g,i)=>{
     h += `<div class="rep-item"><div class="rh"><span>concessão ${i+1}</span><button class="rm-x" onclick="rmRgtSub('granted',${i})">×</button></div>
-      ${fld('act','xsd',`rg_g_act_${i}`,g.act,'ex.: replicate, migrate, disseminate','',true,'syncRgt','act')}`;
+      ${vsel('act','xsd',`rg_g_act_${i}`,g.act,LOCVOC.actionsGranted,'syncRgt',true,'act')}`;
     (g.restrictions||[]).forEach((x,xi)=>{ h+=`<div class="rep-item"><div class="rh"><span>restriction ${xi+1}</span><button class="rm-x" onclick="rmRgtSub2('granted',${i},'restrictions',${xi})">×</button></div>${fld('restriction','dd',`rg_g_res_${i}_${xi}`,x.value,'','',false,'syncRgt')}</div>`; });
     h += `<button class="add-btn" onclick="addRgtSub2('granted',${i},'restrictions')">+ restriction</button>
       <div class="field-row" style="margin-top:8px">${fld('termOfGrant: startDate','dd',`rg_g_gs_${i}`,g.gStart,'','startDate obrigatório se o termo for usado',false,'syncRgt')}${fld('endDate','dd',`rg_g_ge_${i}`,g.gEnd,'','',false,'syncRgt')}</div>
@@ -1783,7 +1812,7 @@ function renderRightsForm(){
 }
 function syncRgt(){
   const r=ensureRgt();
-  const g=id=>{const el=document.getElementById(id);return el?el.value:'';};
+  const g=id=>{const el=document.getElementById(id); if(!el) return ''; if(el.tagName==='SELECT'&&el.value==='__other__'){ const o=document.getElementById(id+'_o'); return o?o.value:''; } return el.value;};
   const gc=id=>{const el=document.getElementById(id);return el?el.checked:false;};
   r.idType=g('rg_idt'); r.idValue=g('rg_idv'); r.basis=g('rg_basis')||r.basis;
   r.exts=readExts('exts', r.exts);
