@@ -66,6 +66,11 @@
   .statusbar .sv.warn{background:var(--warn-bg);color:var(--warn)}
   main{display:flex;align-items:stretch;min-height:calc(100vh - 104px)}
   .panel{display:none;flex:1 1 0;min-width:0;padding:22px 26px;border-right:1px solid var(--line);overflow:auto;max-height:calc(100vh - 104px)}
+  .splitter{display:none;flex:0 0 7px;cursor:col-resize;position:relative;background:transparent;align-self:stretch}
+  .splitter.on{display:block}
+  .splitter::before{content:"";position:absolute;top:0;bottom:0;left:2px;width:2px;background:var(--line)}
+  .splitter:hover::before,body.resizing .splitter.on::before{background:var(--amber);width:3px;left:2px}
+  body.resizing{cursor:col-resize;user-select:none}
   .panel.active{display:block}
   .empty-stage{display:none;flex:1 1 100%;align-items:center;justify-content:center;text-align:center;color:var(--ink-soft);font-size:13px;line-height:1.6;padding:54px 22px}
   main.none .empty-stage{display:flex}
@@ -201,7 +206,7 @@
   .legend span{display:inline-flex;align-items:center;gap:4px}
   .legend .sw{width:9px;height:9px;border-radius:2px;display:inline-block}
   .legend .ast{color:var(--bad);font-weight:800}
-  @media (max-width:1000px){main{flex-direction:column}.workbar{padding:8px 14px}.panel{padding:16px 14px;border-right:none;border-bottom:1px solid var(--line);max-height:none}}
+  @media (max-width:1000px){main{flex-direction:column}.workbar{padding:8px 14px}.panel{padding:16px 14px;border-right:none;border-bottom:1px solid var(--line);max-height:none}.splitter{display:none!important}}
   /* ícone de ajuda */
   .info-i{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;border:1px solid var(--ink-soft);background:transparent;color:var(--ink-soft);font-size:10px;line-height:1;cursor:pointer;margin-left:6px;padding:0;vertical-align:middle;font-family:var(--sans);font-weight:700}
   .info-i:hover{background:var(--ink);color:var(--paper);border-color:var(--ink)}
@@ -282,13 +287,13 @@
       <span><span class="sw" style="background:var(--line)"></span> recomendado</span>
     </div>
   </section>
-
+  <div class="splitter" id="split-1" title="arraste para redimensionar"></div>
   <section class="panel" id="panel-modelo" role="region" aria-labelledby="step-modelo" tabindex="-1">
     <h2><span class="idx">02</span> Modelo interno</h2>
     <p class="lede">Representação neutra das entidades. Fonte única de onde os dois perfis derivam. Vínculos por identificador local.</p>
     <div id="modelHost"></div>
   </section>
-
+  <div class="splitter" id="split-2" title="arraste para redimensionar"></div>
   <section class="panel" id="panel-saida" role="region" aria-labelledby="step-saida" tabindex="-1">
     <h2><span class="idx">03</span> Saída + validação</h2>
     <p class="lede">O premis.xml gerado a partir do modelo, em dois perfis. A validação roda antes da exportação, com a fonte de cada regra.</p>
@@ -3158,12 +3163,31 @@ function toggleTheme(){ applyTheme(document.documentElement.getAttribute('data-t
 const STEPS=['origem','modelo','saida'];
 let visibleSteps=new Set(['origem']);
 try{ const saved=JSON.parse(localStorage.getItem('premis-panels')||'null'); if(Array.isArray(saved)) visibleSteps=new Set(saved.filter(s=>STEPS.includes(s))); }catch(e){}
+/* larguras ajustáveis dos painéis (flex-grow por painel), com divisórias arrastáveis */
+let panelGrow={origem:1,modelo:1,saida:1};
+try{ const g=JSON.parse(localStorage.getItem('premis-grow')||'null'); if(g&&typeof g==='object') Object.keys(panelGrow).forEach(k=>{ if(typeof g[k]==='number'&&g[k]>0) panelGrow[k]=g[k]; }); }catch(e){}
+function panelKey(p){ return p.id.replace('panel-',''); }
+function prevPanel(el){ let n=el.previousElementSibling; while(n){ if(n.classList.contains('panel')&&n.classList.contains('active')) return n; n=n.previousElementSibling; } return null; }
+function nextPanel(el){ let n=el.nextElementSibling; while(n){ if(n.classList.contains('panel')&&n.classList.contains('active')) return n; n=n.nextElementSibling; } return null; }
+function initSplitters(){ ['split-1','split-2'].forEach(id=>{ const sp=document.getElementById(id); if(!sp||sp._init) return; sp._init=true;
+  sp.addEventListener('pointerdown', e=>{ if(e.pointerType==='mouse'&&e.button!==0) return; const left=prevPanel(sp), right=nextPanel(sp); if(!left||!right) return; e.preventDefault();
+    try{ sp.setPointerCapture(e.pointerId); }catch(_){}
+    const lw=left.getBoundingClientRect().width, rw=right.getBoundingClientRect().width, sumW=lw+rw;
+    const lg=parseFloat(left.style.flexGrow)||1, rg=parseFloat(right.style.flexGrow)||1, sumG=lg+rg, startX=e.clientX;
+    const move=ev=>{ let nlw=lw+(ev.clientX-startX); nlw=Math.max(200,Math.min(sumW-200,nlw)); const nlg=sumG*nlw/sumW; left.style.flexGrow=nlg; right.style.flexGrow=sumG-nlg; };
+    const up=()=>{ sp.removeEventListener('pointermove',move); sp.removeEventListener('pointerup',up); sp.removeEventListener('pointercancel',up); document.body.classList.remove('resizing');
+      panelGrow[panelKey(left)]=parseFloat(left.style.flexGrow)||1; panelGrow[panelKey(right)]=parseFloat(right.style.flexGrow)||1; try{ localStorage.setItem('premis-grow', JSON.stringify(panelGrow)); }catch(_){} };
+    sp.addEventListener('pointermove',move); sp.addEventListener('pointerup',up); sp.addEventListener('pointercancel',up); document.body.classList.add('resizing');
+  });
+}); }
 function renderSteps(){
   STEPS.forEach(s=>{
     const panel=document.getElementById('panel-'+s), btn=document.getElementById('step-'+s), on=visibleSteps.has(s);
     if(panel) panel.classList.toggle('active', on);
     if(btn){ btn.classList.toggle('on', on); btn.setAttribute('aria-pressed', on?'true':'false'); }
   });
+  STEPS.forEach(s=>{ const p=document.getElementById('panel-'+s); if(p) p.style.flexGrow = panelGrow[s]||1; });
+  ['split-1','split-2'].forEach(id=>{ const sp=document.getElementById(id); if(!sp) return; const owner={'split-1':'origem','split-2':'modelo'}[id]; sp.classList.toggle('on', visibleSteps.has(owner) && !!nextPanel(sp)); });
   const m=document.querySelector('main'); if(m) m.classList.toggle('none', visibleSteps.size===0);
   try{ localStorage.setItem('premis-panels', JSON.stringify([...visibleSteps])); }catch(e){}
   renderStatus();
@@ -3196,6 +3220,7 @@ function bind(){
   document.getElementById('modeImport').onclick=()=>setMode('import');
   document.getElementById('modeExtract').onclick=()=>setMode('extract');
   STEPS.forEach(s=>{ const b=document.getElementById('step-'+s); if(b) b.onclick=()=>toggleStep(s); });
+  initSplitters();
   const stepperEl=document.getElementById('stepper');
   if(stepperEl) stepperEl.addEventListener('keydown', ev=>{
     const order=STEPS.map(s=>document.getElementById('step-'+s)), i=order.indexOf(document.activeElement);
