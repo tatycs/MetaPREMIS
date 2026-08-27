@@ -824,7 +824,7 @@ function validate(profile){
     if(!allow.env && ((o.envFunctions||[]).length||(o.envDesignations||[]).length||(o.envRegistries||[]).length)) orphan.push('environment*');
     if(orphan.length) add('info','XSD',`${ref}: dados preenchidos em ${orphan.join(', ')} não existem no tipo ${t} e serão omitidos do XML (preservados no rascunho).`);
     if(t==='file'){
-      if(!has(o.originalName)) add('warn','Archivematica',`${ref}: sem originalName — elo com o arquivo em objects/.`);
+      if(profile==='archivematica' && !has(o.originalName)) add('warn','Archivematica',`${ref}: sem originalName — elo com o arquivo em objects/.`);
       else if(profile==='archivematica' && !/^objects\//.test(o.originalName.trim())) add('warn','Archivematica',`${ref}: originalName não começa com objects/.`);
     } else if(profile==='archivematica'){
       add('info','Archivematica',`${ref}: o template oficial de importação do Archivematica usa objetos xsi:type=file ancorados em objects/; o comportamento com o tipo ${t} não está documentado na página consultada.`);
