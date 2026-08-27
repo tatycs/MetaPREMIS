@@ -139,6 +139,10 @@
   .tlabel .tbtn-ed{cursor:pointer;color:var(--amber);border:none;background:none;font:700 10px var(--mono);text-transform:lowercase;margin-left:6px;padding:0}
   .tlabel .tbtn-ed:hover{text-decoration:underline}
   .tlabel .tbtn-x{cursor:pointer;color:var(--bad);border:none;background:none;font-weight:700;font-size:13px;line-height:1;margin-left:4px;padding:0}
+  .tcar{cursor:pointer;display:inline-block;width:13px;text-align:center;color:var(--ink-soft);user-select:none;font-size:9px;transition:transform .12s}
+  .tnode.collapsed>.tlabel>.tcar{transform:rotate(-90deg)}
+  .tnode.collapsed>.tchildren{display:none}
+  .tcar-sp{display:inline-block;width:13px}
   .card{border:1px solid var(--line);border-left:3px solid var(--ink);background:var(--paper-2);border-radius:0 4px 4px 0;padding:8px 10px;margin-bottom:7px;font-size:12.5px}
   .card .cid{font-family:var(--mono);font-size:10.5px;color:var(--amber)}
   .card .ctitle{font-weight:600}
@@ -1798,6 +1802,10 @@ function renderTree(roots, childrenOf){
   };
   return roots.map(r=>node(r,'',[])).join('') || '<div class="empty">Não foi possível montar a árvore — verifique se há ciclo nas relações structural (todo objeto é filho de algum outro).</div>';
 }
+let treeCollapsed=new Set();
+function toggleTree(id, el){ if(treeCollapsed.has(id)) treeCollapsed.delete(id); else treeCollapsed.add(id); const n=el.closest('.tnode'); if(n) n.classList.toggle('collapsed'); }
+function treeCollapseAll(){ document.querySelectorAll('#modelHost .tnode[data-tid]').forEach(n=>{ treeCollapsed.add(n.getAttribute('data-tid')); n.classList.add('collapsed'); }); }
+function treeExpandAll(){ treeCollapsed.clear(); document.querySelectorAll('#modelHost .tnode.collapsed').forEach(n=>n.classList.remove('collapsed')); }
 function renderModel(){
   const host=document.getElementById('modelHost');
   if(!(model.objects.length||model.events.length||model.agents.length||model.rights.length)){
@@ -1809,46 +1817,47 @@ function renderModel(){
   const findObj=lid=>model.objects.find(o=>o.lid===lid);
   const findAg=lid=>model.agents.find(a=>a.lid===lid);
   const btns=(coll,lid)=>` <button class="tbtn-ed" onclick="editEnt('${coll}','${lid}')">editar</button><button class="tbtn-x" title="remover" onclick="removeEnt('${coll}','${lid}')">×</button>`;
+  const collId=id=>treeCollapsed.has(id)?' collapsed':'';
+  const wrap=(id,inner,kids)=>{ const k=!!kids;
+    const car=k?`<span class="tcar" onclick="toggleTree('${id}',this)">▾</span>`:`<span class="tcar-sp"></span>`;
+    return `<div class="tnode${k?collId(id):''}"${k?` data-tid="${id}"`:''}><div class="tlabel">${car}${inner}</div>${k?`<div class="tchildren">${kids}</div>`:''}</div>`; };
+  const leaf=inner=>`<div class="tnode"><div class="tlabel"><span class="tcar-sp"></span>${inner}</div></div>`;
   const agentNode=(agLid,role)=>{ const a=findAg(agLid); if(!a) return ''; used.agents.add(agLid);
     const nm=(a.names&&a.names[0]&&a.names[0].value)||(a.identifiers[0]||{}).value||'(sem nome)';
-    return `<div class="tnode"><div class="tlabel"><span class="tico">👤</span><span class="ctitle">${esc(nm)}</span> <span class="src xsd">${esc(a.agentType||'agent')}</span>${role?` <span class="tedge">${esc(role)}</span>`:''}${btns('agents',agLid)}</div></div>`; };
+    return leaf(`<span class="tico">👤</span><span class="ctitle">${esc(nm)}</span> <span class="src xsd">${esc(a.agentType||'agent')}</span>${role?` <span class="tedge">${esc(role)}</span>`:''}${btns('agents',agLid)}`); };
   const eventNode=e=>{ used.events.add(e.lid);
-    let h=`<div class="tnode"><div class="tlabel"><span class="tico">⏱</span><span class="ctitle">${esc(e.eventType||'(sem tipo)')}</span> <span class="tedge">${esc(e.dateTime||'sem data')}</span> <span class="cid">${esc(e.idValue||e.lid)}</span>${btns('events',e.lid)}</div>`;
     const ags=(e.linkAgents||[]).map(la=>agentNode(la.agentLid,la.role)).filter(Boolean).join('');
-    if(ags) h+=`<div class="tchildren">${ags}</div>`;
-    return h+`</div>`; };
+    return wrap(e.lid,`<span class="tico">⏱</span><span class="ctitle">${esc(e.eventType||'(sem tipo)')}</span> <span class="tedge">${esc(e.dateTime||'sem data')}</span> <span class="cid">${esc(e.idValue||e.lid)}</span>${btns('events',e.lid)}`,ags); };
   const rightNode=r=>{ used.rights.add(r.lid);
-    let h=`<div class="tnode"><div class="tlabel"><span class="tico">⚖</span><span class="ctitle">${esc(r.idValue||'(sem id)')}</span> <span class="src xsd">${esc(r.basis||'')}</span>${btns('rights',r.lid)}</div>`;
     const ags=(r.linkAgents||[]).map(agLid=>agentNode(agLid,'')).filter(Boolean).join('');
-    if(ags) h+=`<div class="tchildren">${ags}</div>`;
-    return h+`</div>`; };
+    return wrap(r.lid,`<span class="tico">⚖</span><span class="ctitle">${esc(r.idValue||'(sem id)')}</span> <span class="src xsd">${esc(r.basis||'')}</span>${btns('rights',r.lid)}`,ags); };
   const envNode=o=>{ const fns=o.envFunctions||[],des=o.envDesignations||[],regs=o.envRegistries||[],exts=o.envExts||[];
     let kids='';
-    des.forEach(d=>{ if(has(d.name)||has(d.version)||has(d.origin)) kids+=`<div class="tnode"><div class="tlabel"><span class="tico">🖥</span><span class="ctitle">${esc(d.name||'(ambiente)')}</span>${has(d.version)?` <span class="tedge">${esc(d.version)}</span>`:''}${has(d.origin)?` <span class="tedge">${esc(d.origin)}</span>`:''}</div></div>`; });
-    fns.forEach(f=>{ if(has(f.fType)||has(f.fLevel)) kids+=`<div class="tnode"><div class="tlabel"><span class="tico">⚙</span><span class="ctitle">função: ${esc(f.fType||'')}</span>${has(f.fLevel)?` <span class="tedge">nível ${esc(f.fLevel)}</span>`:''}</div></div>`; });
-    regs.forEach(rg=>{ if(has(rg.name)||has(rg.key)) kids+=`<div class="tnode"><div class="tlabel"><span class="tico">🗂</span><span class="ctitle">registro: ${esc(rg.name||'')}</span>${has(rg.key)?` <span class="tedge">${esc(rg.key)}</span>`:''}${has(rg.role)?` <span class="tedge">${esc(rg.role)}</span>`:''}</div></div>`; });
-    if(exts.length) kids+=`<div class="tnode"><div class="tlabel"><span class="tico">🧩</span><span class="ctitle">extensão de environment</span> <span class="tedge">${exts.length}</span></div></div>`;
+    des.forEach(d=>{ if(has(d.name)||has(d.version)||has(d.origin)) kids+=leaf(`<span class="tico">🖥</span><span class="ctitle">${esc(d.name||'(ambiente)')}</span>${has(d.version)?` <span class="tedge">${esc(d.version)}</span>`:''}${has(d.origin)?` <span class="tedge">${esc(d.origin)}</span>`:''}`); });
+    fns.forEach(f=>{ if(has(f.fType)||has(f.fLevel)) kids+=leaf(`<span class="tico">⚙</span><span class="ctitle">função: ${esc(f.fType||'')}</span>${has(f.fLevel)?` <span class="tedge">nível ${esc(f.fLevel)}</span>`:''}`); });
+    regs.forEach(rg=>{ if(has(rg.name)||has(rg.key)) kids+=leaf(`<span class="tico">🗂</span><span class="ctitle">registro: ${esc(rg.name||'')}</span>${has(rg.key)?` <span class="tedge">${esc(rg.key)}</span>`:''}${has(rg.role)?` <span class="tedge">${esc(rg.role)}</span>`:''}`); });
+    if(exts.length) kids+=leaf(`<span class="tico">🧩</span><span class="ctitle">extensão de environment</span> <span class="tedge">${exts.length}</span>`);
     if(!kids) return '';
-    return `<div class="tnode"><div class="tlabel"><span class="tico">🖥</span><span class="ctitle">environment</span><button class="tbtn-ed" onclick="editEnt('objects','${o.lid}')">editar</button></div><div class="tchildren">${kids}</div></div>`; };
+    return wrap(o.lid+'::env',`<span class="tico">🖥</span><span class="ctitle">environment</span><button class="tbtn-ed" onclick="editEnt('objects','${o.lid}')">editar</button>`,kids); };
   const eventsOf=o=>model.events.filter(e=>(o.linkEvents||[]).includes(e.lid)||(e.linkObjects||[]).some(lo=>lo.objectLid===o.lid))
     .sort((a,b)=>String(a.dateTime||'~').localeCompare(String(b.dateTime||'~')));
   const rightsOf=o=>model.rights.filter(r=>(o.linkRights||[]).includes(r.lid)||(r.linkObjects||[]).includes(o.lid));
   const objNode=(lid,sub,anc)=>{ const o=findObj(lid); if(!o) return '';
     const id=o.identifiers[0]||{}; const t=o.objType||'file';
     const title=esc(o.originalName||id.value||'(sem id)'); const cyc=anc.includes(lid);
-    let h=`<div class="tnode"><div class="tlabel"><span class="cid">${lid}</span> <span class="src xsd" style="margin:0 3px">${t}</span> <span class="ctitle">${title}</span>${sub?` <span class="tedge">${esc(sub)}</span>`:''}${cyc?` <span class="tedge bad">ciclo</span>`:''}${btns('objects',lid)}</div>`;
-    if(!cyc){ let kids='';
+    const inner=`<span class="cid">${lid}</span> <span class="src xsd" style="margin:0 3px">${t}</span> <span class="ctitle">${title}</span>${sub?` <span class="tedge">${esc(sub)}</span>`:''}${cyc?` <span class="tedge bad">ciclo</span>`:''}${btns('objects',lid)}`;
+    let kids='';
+    if(!cyc){
       (ed.childrenOf.get(lid)||[]).forEach(k=>kids+=objNode(k.lid,k.subType,anc.concat(lid)));
       kids+=envNode(o);
       eventsOf(o).forEach(e=>kids+=eventNode(e));
       rightsOf(o).forEach(r=>kids+=rightNode(r));
-      if(kids) h+=`<div class="tchildren">${kids}</div>`;
     }
-    return h+`</div>`; };
+    return wrap(lid,inner,kids); };
   const roots=model.objects.filter(o=>!ed.isChild.has(o.lid)).map(o=>o.lid);
   let tree=roots.map(r=>objNode(r,'',[])).join('');
   if(!tree) tree=`<div class="empty">Não foi possível montar a árvore — verifique se há ciclo nas relações structural.</div>`;
-  let html=`<div class="model-group"><div class="gh"><span>modelo — árvore</span><span>${roots.length} raiz(es)</span></div><div class="tree">${tree}</div></div>`;
+  let html=`<div class="model-group"><div class="gh"><span>modelo — árvore</span><span>${roots.length} raiz(es) <button class="tbtn-ed" onclick="treeExpandAll()">▾ expandir</button> <button class="tbtn-ed" onclick="treeCollapseAll()">▸ contrair</button></span></div><div class="tree">${tree}</div></div>`;
   /* entidades não referenciadas por nenhum objeto continuam acessíveis aqui */
   const oe=model.events.filter(e=>!used.events.has(e.lid));
   const or=model.rights.filter(r=>!used.rights.has(r.lid));
