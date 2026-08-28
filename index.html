@@ -678,8 +678,7 @@ function genObject(o, L, profile){
       L.push(`    </premis:linkingEventIdentifier>`);
     }
   });
-  /* linkingRightsStatementIdentifier — omitido no perfil Archivematica (rights não vão no premis.xml) */
-  if(profile!=='archivematica') (o.linkRights||[]).forEach(rLid=>{
+  (o.linkRights||[]).forEach(rLid=>{
     const r=model.rights.find(x=>x.lid===rLid); if(!r) return;
     L.push(`    <premis:linkingRightsStatementIdentifier>`);
     L.push(elv('linkingRightsStatementIdentifierType', r.idType, 6));
@@ -759,8 +758,7 @@ function genAgent(a, L, profile){
     L.push(elv('linkingEventIdentifierValue', ev.idValue, 6));
     L.push(`    </premis:linkingEventIdentifier>`);
   });
-  /* linkingRightsStatementIdentifier — omitido no perfil Archivematica (rights não vão no premis.xml) */
-  if(profile!=='archivematica') (a.linkRights||[]).forEach(rLid=>{
+  (a.linkRights||[]).forEach(rLid=>{
     const r=model.rights.find(x=>x.lid===rLid); if(!r) return;
     L.push(`    <premis:linkingRightsStatementIdentifier>`);
     L.push(elv('linkingRightsStatementIdentifierType', r.idType, 6));
@@ -865,7 +863,7 @@ function buildXML(profile){
   model.objects.forEach(o=>genObject(o,L,profile));
   model.events.forEach(e=>genEvent(e,L));
   model.agents.forEach(a=>genAgent(a,L,profile));
-  if(profile!=='archivematica') model.rights.forEach(r=>genRights(r,L));
+  model.rights.forEach(r=>genRights(r,L));
   L.push(`</premis:premis>`);
   return L.join('\n');
 }
@@ -953,8 +951,6 @@ function validate(profile){
       if(has(g.rEnd)&&!has(g.rStart)) add('bad','XSD',`${ref}/rightsGranted[${gi+1}]: termOfRestriction exige startDate quando usado.`);
     });
   });
-  if(profile==='archivematica' && model.rights.length>0)
-    add('info','Archivematica',`${model.rights.length} rights no modelo serão omitidos deste premis.xml: no Archivematica, direitos entram por rights.csv ou pela interface, não pela importação de premis.xml. Use o perfil completo para exportá-los em XML.`);
   /* relationship — estrutura (XSD); a existência dos alvos é checada na Camada 2 abaixo */
   model.objects.forEach(o=>{
     (o.relationships||[]).forEach((rel,ri)=>{
@@ -1656,7 +1652,7 @@ function renderObjectForm(){
   // linkingRightsStatementIdentifier 0..n (seleção)
   h += `<div class="block ${collapsed['o_lr']!==false?'collapsed':''}">${blockHead('o_lr','linkingRightsStatementIdentifier','0..n')}<div class="bb">`;
   h += model.rights.length ? model.rights.map(r=>`<div class="chk"><input type="checkbox" id="lr_${r.lid}" ${(o.linkRights||[]).includes(r.lid)?'checked':''} onchange="syncObj()"><label style="font-weight:400;margin:0" for="lr_${r.lid}">${r.lid} · ${esc(r.basis)} · ${esc(r.idValue)}</label></div>`).join('') : '<div class="empty">Nenhum rights no modelo. Crie na aba rights.</div>';
-  h += `<div class="hint" style="margin-top:6px">Omitido no perfil Archivematica (rights não entram no premis.xml desse fluxo).</div></div></div>`;
+  h += `</div></div>`;
 
   h += `<div class="btn-row"><button class="btn" id="btnAddObj">${editing.object?'salvar alterações':'adicionar object ao modelo'}</button><button class="btn ghost" id="btnResetObj">${editing.object?'cancelar edição':'limpar'}</button></div>`;
   h += `<div class="omit">Fora por escopo: elementos <code>*Extension</code> (xs:any — ponto de extensão aberto, sem campos definidos no schema).</div>`;
@@ -1811,7 +1807,7 @@ function renderAgentForm(){
   // linkingRightsStatementIdentifier (DD 3.8, seleção)
   h += `<div class="block ${collapsed['a_lr']!==false?'collapsed':''}">${blockHead('a_lr','linkingRightsStatementIdentifier','0..n')}<div class="bb">`;
   h += model.rights.length ? model.rights.map(r=>`<div class="chk"><input type="checkbox" id="ag_lr_${r.lid}" ${(a.linkRights||[]).includes(r.lid)?'checked':''} onchange="syncAgt()"><label style="font-weight:400;margin:0" for="ag_lr_${r.lid}">${r.lid} · ${esc(r.basis)} · ${esc(r.idValue)}</label></div>`).join('') : '<div class="empty">Nenhum rights no modelo. Crie na aba rights.</div>';
-  h += `<div class="hint" style="margin-top:6px">Omitido no perfil Archivematica (rights não entram no premis.xml desse fluxo).</div></div></div>`;
+  h += `</div></div>`;
 
   // linkingEnvironmentIdentifier (DD 3.9) — referência a um ambiente (IE de tipo environment); Type/Value/Role livres
   h += `<div class="block ${collapsed['a_lenv']!==false?'collapsed':''}">${blockHead('a_lenv','linkingEnvironmentIdentifier','0..n')}<div class="bb">`;
