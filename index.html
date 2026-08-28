@@ -2233,7 +2233,7 @@ function renderOutput(){
   }
   { const be=document.getElementById('btnExport'); be.disabled=result.blocked||!hasContent||xmlEditing;
     be.title=xmlEditing ? 'Aplique ou cancele a edição do XML primeiro' : (be.disabled ? (result.blocked ? 'Corrija os erros de estrutura (XSD) para liberar o download' : 'Adicione conteúdo ao modelo primeiro') : 'Baixar premis.xml'); }
-  if(xmlEditing){ const vb=document.getElementById('btnVerify'); if(vb) vb.disabled=true; }
+  { const vb=document.getElementById('btnVerify'); if(vb) vb.disabled=xmlEditing; }
   renderXsd();
   renderVerdict();
   renderStatus();
