@@ -173,6 +173,18 @@
   pre.xml .at{color:#c9a36a}
   pre.xml .val{color:#a9c9a0}
   pre.xml .dec{color:#6b8494}
+  pre.xml mark.hit{background:#5c4a12;color:#ffe58a;border-radius:2px;padding:0 1px}
+  pre.xml mark.hit.cur{background:#d98a2b;color:#15212b}
+  .xml-toolbar{display:flex;gap:6px;align-items:center;margin:0 0 6px}
+  .xml-toolbar input{flex:1;min-width:70px;padding:4px 8px;font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink)}
+  .xml-toolbar button{font-family:var(--mono);font-size:11px;border:1px solid var(--line);background:var(--paper);color:var(--ink-soft);padding:4px 8px;border-radius:4px;cursor:pointer;white-space:nowrap}
+  .xml-toolbar button:hover{border-color:var(--amber);color:var(--amber)}
+  .xml-toolbar button.on{background:var(--amber);color:var(--surface);border-color:var(--amber)}
+  .xml-count{font-family:var(--mono);font-size:10.5px;color:var(--ink-soft);min-width:44px;text-align:center}
+  textarea#xmlEdit{display:none;width:100%;box-sizing:border-box;min-height:280px;max-height:52vh;font-family:var(--mono);font-size:11px;line-height:1.5;padding:14px;border-radius:4px;white-space:pre;overflow:auto;border:1px solid var(--amber);background:#15212b;color:#d6e2ea;margin:0 0 8px;tab-size:2}
+  .xml-editbar{display:none;gap:8px;align-items:center;margin:0 0 12px;flex-wrap:wrap}
+  .xml-editbar .hint{font-size:11px;color:var(--ink-soft);margin:0}
+  .tlabel.thit{background:var(--amber-soft);border-radius:4px}
   .val-block{margin-top:6px}
   .val-head{font-family:var(--mono);font-size:10.5px;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-soft);margin:14px 0 6px}
   .val-item{display:flex;gap:8px;align-items:flex-start;font-size:11.5px;padding:6px 8px;border-radius:3px;margin-bottom:4px;border:1px solid transparent}
@@ -304,7 +316,20 @@
     </div>
 
     <div id="verdictHost"></div>
+    <div class="xml-toolbar">
+      <input id="xmlSearch" placeholder="buscar no XML e na árvore…" autocomplete="off">
+      <button id="xmlPrev" title="ocorrência anterior">‹</button>
+      <span class="xml-count" id="xmlCount"></span>
+      <button id="xmlNext" title="próxima ocorrência">›</button>
+      <button id="xmlEditToggle" title="editar o XML diretamente e reinterpretar para o modelo">editar XML</button>
+    </div>
     <pre class="xml" id="xmlOut"></pre>
+    <textarea id="xmlEdit" spellcheck="false"></textarea>
+    <div class="xml-editbar" id="xmlEditBar">
+      <button class="btn amber" id="xmlApply">aplicar ao modelo</button>
+      <button class="btn ghost" id="xmlCancel">cancelar</button>
+      <span class="hint">Reinterpreta o XML e substitui a árvore/formulários. Blocos não modelados (certas extensões xs:any) podem não voltar.</span>
+    </div>
 
     <div class="btn-row">
       <button class="btn amber" id="btnExport">baixar .xml</button>
@@ -2042,6 +2067,7 @@ function renderModel(){
   const oa=model.agents.filter(a=>!used.agents.has(a.lid)); oa.forEach(a=>orph+=agentNode(a.lid,''));
   if(oe.length||or.length||oa.length) html+=`<div class="model-group"><div class="gh"><span>sem vínculo na árvore</span><span>${oe.length+or.length+oa.length}</span></div><div class="tree">${orph}</div></div>`;
   host.innerHTML=html;
+  if(typeof xmlSearchTerm!=='undefined' && xmlSearchTerm) highlightTree(xmlSearchTerm);
 }
 function removeEnt(coll,lid){
   /* A remoção NÃO limpa vínculos: deixa o órfão visível para o verificador de
@@ -2145,7 +2171,7 @@ function restoreAutosave(){
 }
 function renderOutput(){
   scheduleAutosave();
-  document.getElementById('xmlOut').innerHTML=highlight(buildXML(currentProfile));
+  renderXmlArea();
   const result=validate(currentProfile);
   const hasContent=model.objects.length||model.events.length||model.agents.length||model.rights.length;
   const vhost=document.getElementById('valHost');
@@ -2155,11 +2181,75 @@ function renderOutput(){
     result.items.forEach(it=>{const ico=it.level==='ok'?'✓':it.level==='bad'?'✕':it.level==='info'?'i':'!';html+=`<div class="val-item ${it.level}"><span class="ico">${ico}</span><span>${it.msg}<span class="vsrc">fonte: ${it.source}</span></span></div>`;});
     vhost.innerHTML=html;
   }
-  { const be=document.getElementById('btnExport'); be.disabled=result.blocked||!hasContent;
-    be.title=be.disabled ? (result.blocked ? 'Corrija os erros de estrutura (XSD) para liberar o download' : 'Adicione conteúdo ao modelo primeiro') : 'Baixar premis.xml'; }
+  { const be=document.getElementById('btnExport'); be.disabled=result.blocked||!hasContent||xmlEditing;
+    be.title=xmlEditing ? 'Aplique ou cancele a edição do XML primeiro' : (be.disabled ? (result.blocked ? 'Corrija os erros de estrutura (XSD) para liberar o download' : 'Adicione conteúdo ao modelo primeiro') : 'Baixar premis.xml'); }
+  if(xmlEditing){ const vb=document.getElementById('btnVerify'); if(vb) vb.disabled=true; }
   renderXsd();
   renderVerdict();
   renderStatus();
+}
+
+/* ====================== EDITOR DE XML + BUSCA (XML e árvore) ====================== */
+let xmlEditing=false, xmlSearchTerm='', xmlMatchIdx=0, xmlMatchCount=0;
+function markXml(xml, term){
+  const t=(term||'').toLowerCase(); if(!t) return highlight(xml);
+  const low=xml.toLowerCase(); const pos=[]; let i=low.indexOf(t,0);
+  while(i>=0){ pos.push(i); i=low.indexOf(t, i+t.length); }
+  xmlMatchCount=pos.length; if(xmlMatchIdx>=xmlMatchCount) xmlMatchIdx=0;
+  let out='', cur=0;
+  pos.forEach((p,n)=>{ out+=esc(xml.slice(cur,p)); const isCur=n===xmlMatchIdx; out+=`<mark class="hit${isCur?' cur':''}"${isCur?' id="xmlCur"':''}>`+esc(xml.slice(p,p+term.length))+'</mark>'; cur=p+term.length; });
+  out+=esc(xml.slice(cur)); return out;
+}
+function renderXmlArea(){
+  const pre=document.getElementById('xmlOut'), ta=document.getElementById('xmlEdit'), bar=document.getElementById('xmlEditBar'), tgl=document.getElementById('xmlEditToggle');
+  if(xmlEditing){
+    if(pre) pre.style.display='none';
+    if(ta) ta.style.display='block';
+    if(bar) bar.style.display='flex';
+    if(tgl){ tgl.classList.add('on'); tgl.textContent='editando…'; }
+    return;
+  }
+  if(ta) ta.style.display='none';
+  if(bar) bar.style.display='none';
+  if(tgl){ tgl.classList.remove('on'); tgl.textContent='editar XML'; }
+  if(pre){ pre.style.display='block'; const xml=buildXML(currentProfile);
+    pre.innerHTML = xmlSearchTerm ? markXml(xml, xmlSearchTerm) : highlight(xml);
+    updateXmlCount();
+    const c=document.getElementById('xmlCur'); if(c) c.scrollIntoView({block:'center'});
+  }
+}
+function updateXmlCount(){ const el=document.getElementById('xmlCount'); if(!el) return; el.textContent = xmlSearchTerm ? (xmlMatchCount?`${xmlMatchIdx+1}/${xmlMatchCount}`:'0/0') : ''; }
+function highlightTree(term){
+  const host=document.getElementById('modelHost'); if(!host) return;
+  host.querySelectorAll('.tlabel.thit').forEach(el=>el.classList.remove('thit'));
+  const t=(term||'').toLowerCase(); if(!t) return;
+  host.querySelectorAll('.tlabel').forEach(el=>{ if(el.textContent.toLowerCase().includes(t)){ el.classList.add('thit');
+    let n=el.closest('.tnode'); while(n){ n.classList.remove('collapsed'); const tid=n.getAttribute('data-tid'); if(tid) treeCollapsed.delete(tid); const par=n.parentElement; n=par?par.closest('.tnode'):null; }
+  }});
+}
+function doSearch(term){ xmlSearchTerm=term||''; xmlMatchIdx=0; if(!xmlEditing) renderXmlArea(); highlightTree(xmlSearchTerm); updateXmlCount(); }
+function searchStep(dir){ if(!xmlMatchCount||xmlEditing) return; xmlMatchIdx=(xmlMatchIdx+dir+xmlMatchCount)%xmlMatchCount; renderXmlArea(); }
+function toggleXmlEdit(){
+  if(xmlEditing){ xmlEditing=false; renderOutput(); return; }
+  const ta=document.getElementById('xmlEdit'); if(ta) ta.value=buildXML(currentProfile);
+  xmlEditing=true; renderOutput();
+  if(ta){ ta.style.display='block'; ta.focus(); }
+}
+function cancelXmlEdit(){ xmlEditing=false; renderOutput(); toast('Edição do XML descartada.'); }
+function applyXmlEdit(){
+  const ta=document.getElementById('xmlEdit'); if(!ta) return;
+  const res=parsePremisXML(ta.value);
+  if(!res.ok){ alert('XML inválido, não foi possível interpretar: '+(res.error||'erro de leitura')+'\n\nCorrija no editor e tente de novo (ou cancele).'); return; }
+  if(!confirm('Aplicar reinterpreta o XML e substitui o modelo atual (árvore e formulários serão refeitos a partir dele). Continuar?')) return;
+  Object.assign(model,{objects:res.model.objects,events:res.model.events,agents:res.model.agents,rights:res.model.rights,relationships:[]});
+  lidCounter=res.counter;
+  editing.object=editing.event=editing.agent=editing.rights=null;
+  objDraft=mk.object(); evtDraft=mk.event(); agtDraft=mk.agent(); rgtDraft=null;
+  xmlEditing=false;
+  renderForm(); renderModel(); renderOutput();
+  let msg=`Modelo atualizado a partir do XML: ${res.model.objects.length} obj, ${res.model.events.length} ev, ${res.model.agents.length} ag, ${res.model.rights.length} dir.`;
+  if(res.dropped&&res.dropped.length) msg+=` ${res.dropped.length} vínculo(s)/bloco(s) não trazidos.`;
+  toast(msg);
 }
 
 /* ---- import ---- */
@@ -3295,6 +3385,15 @@ function bind(){
   document.getElementById('modeExtract').onclick=()=>setMode('extract');
   STEPS.forEach(s=>{ const b=document.getElementById('step-'+s); if(b) b.onclick=()=>toggleStep(s); });
   const fh=document.getElementById('formHost'); if(fh){ const onEdit=()=>{ if(inputMode==='form') scheduleAutosave(); }; fh.addEventListener('input',onEdit); fh.addEventListener('change',onEdit); }
+  { const si=document.getElementById('xmlSearch');
+    if(si){ si.addEventListener('input',()=>doSearch(si.value));
+      si.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); searchStep(e.shiftKey?-1:1); } }); }
+    const pv=document.getElementById('xmlPrev'), nx=document.getElementById('xmlNext');
+    if(pv) pv.onclick=()=>searchStep(-1); if(nx) nx.onclick=()=>searchStep(1);
+    const tg=document.getElementById('xmlEditToggle'); if(tg) tg.onclick=toggleXmlEdit;
+    const ap=document.getElementById('xmlApply'); if(ap) ap.onclick=applyXmlEdit;
+    const cc=document.getElementById('xmlCancel'); if(cc) cc.onclick=cancelXmlEdit;
+  }
   initSplitters();
   const stepperEl=document.getElementById('stepper');
   if(stepperEl) stepperEl.addEventListener('keydown', ev=>{
