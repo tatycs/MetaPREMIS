@@ -108,6 +108,27 @@ A lista anterior tinha 39 rótulos **sem código**, um subconjunto do **PREMIS 2
   `exportation` (oficial: *exporting* / `exp`).
 Substituída pela tabela oficial dos 50 termos com código e rótulo.
 
+## Relationship — vocabulário e hierarquia de objectCategory
+
+`relationshipType` e `relationshipSubType` usam os vocabulários oficiais da LoC
+(`relationshipType`, `relationshipSubType`), como menus dependentes (o subtipo é filtrado
+pelo tipo) com opção **"Outro"**. Validação:
+
+- `relationshipSubType` fora do vocabulário → **aviso**.
+- **Coerência Type↔SubType**: o subtipo tem de pertencer ao tipo escolhido (ex.: *is Part Of*
+  é `structural`; declarado como `derivation` → **aviso**).
+- **Hierarquia de objectCategory** (subtipos structural de contenção/representação): a
+  combinação (categoria do objeto, subtipo, categoria do relacionado) tem de ser válida —
+  `isPartOf`/`hasPart` só entre **mesma** categoria; `includes`/`isIncludedIn` só entre
+  categorias **diferentes** (rep→file/bit, file→bit); `isRepresentedBy` de IE para
+  rep/file/bit; `represents` de rep/file/bit para IE; `hasRoot` de rep para file. Fora
+  disso → **aviso** (ex.: *IE includes File*, *File isPartOf IE*, *Bitstream includes
+  Representation*). Fonte: id.loc.gov/vocabulary/preservation/relationshipSubType + hierarquia
+  objectCategory.
+
+**Recíproco automático**: ao salvar um object, o app cria a relação inversa no objeto-alvo
+(`isRepresentedBy`↔`represents`, `isPartOf`↔`hasPart`, `includes`↔`isIncludedIn`, etc.).
+
 ## Limites declarados (o que NÃO é verificado)
 
 - Vocabulários controlados (relationshipSubType, rightsBasis, act, etc. — **exceto eventType**,

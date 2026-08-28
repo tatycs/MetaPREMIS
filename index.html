@@ -2082,7 +2082,8 @@ function renderOutput(){
     result.items.forEach(it=>{const ico=it.level==='ok'?'✓':it.level==='bad'?'✕':it.level==='info'?'i':'!';html+=`<div class="val-item ${it.level}"><span class="ico">${ico}</span><span>${it.msg}<span class="vsrc">fonte: ${it.source}</span></span></div>`;});
     vhost.innerHTML=html;
   }
-  document.getElementById('btnExport').disabled=result.blocked||!hasContent;
+  { const be=document.getElementById('btnExport'); be.disabled=result.blocked||!hasContent;
+    be.title=be.disabled ? (result.blocked ? 'Corrija os erros de estrutura (XSD) para liberar o download' : 'Adicione conteúdo ao modelo primeiro') : 'Baixar premis.xml'; }
   renderXsd();
   renderVerdict();
   renderStatus();
@@ -3064,7 +3065,7 @@ function renderXsd(){
     return;
   }
   if(s.status==='invalid'){
-    let h=head+`<div class="val-item bad"><span class="ico">✕</span><span>Inválido contra o XSD — ${s.result.errors.length} erro(s) de estrutura. Download bloqueado.<span class="vsrc">fonte: XSD PREMIS v3</span></span></div>`;
+    let h=head+`<div class="val-item bad"><span class="ico">✕</span><span>Inválido contra o XSD — ${s.result.errors.length} erro(s) de estrutura. Corrija os itens abaixo; o download é liberado assim que a estrutura ficar válida.<span class="vsrc">fonte: XSD PREMIS v3</span></span></div>`;
     s.result.errors.forEach(e=>{ h+=`<div class="val-item bad"><span class="ico">·</span><span>${esc(e.message)}${e.loc&&e.loc.lineNumber?` <span class="vsrc">linha ${e.loc.lineNumber}</span>`:''}</span></div>`; });
     host.innerHTML=h; return;
   }
