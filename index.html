@@ -2227,13 +2227,25 @@ function highlightTree(term){
     let n=el.closest('.tnode'); while(n){ n.classList.remove('collapsed'); const tid=n.getAttribute('data-tid'); if(tid) treeCollapsed.delete(tid); const par=n.parentElement; n=par?par.closest('.tnode'):null; }
   }});
 }
-function doSearch(term){ xmlSearchTerm=term||''; xmlMatchIdx=0; if(!xmlEditing) renderXmlArea(); highlightTree(xmlSearchTerm); updateXmlCount(); }
-function searchStep(dir){ if(!xmlMatchCount||xmlEditing) return; xmlMatchIdx=(xmlMatchIdx+dir+xmlMatchCount)%xmlMatchCount; renderXmlArea(); }
+function _searchPositions(src,term){ const t=(term||'').toLowerCase(); const pos=[]; if(!t) return pos; const low=src.toLowerCase(); let i=low.indexOf(t,0); while(i>=0){ pos.push(i); i=low.indexOf(t,i+t.length); } return pos; }
+function _selectInTextarea(){ const ta=document.getElementById('xmlEdit'); if(!ta) return;
+  const pos=_searchPositions(ta.value,xmlSearchTerm); xmlMatchCount=pos.length;
+  if(!xmlMatchCount){ return; }
+  if(xmlMatchIdx>=xmlMatchCount) xmlMatchIdx=0;
+  const p=pos[xmlMatchIdx]; ta.focus(); ta.setSelectionRange(p,p+xmlSearchTerm.length);
+  /* rola até a ocorrência (textarea não faz isso sozinho de forma confiável) */
+  let lh=parseFloat(getComputedStyle(ta).lineHeight); if(!lh||isNaN(lh)) lh=16;
+  const line=(ta.value.slice(0,p).match(/\n/g)||[]).length;
+  ta.scrollTop=Math.max(0, line*lh - ta.clientHeight/2);
+}
+function refreshSearch(){ if(xmlEditing){ _selectInTextarea(); } else { renderXmlArea(); } highlightTree(xmlSearchTerm); updateXmlCount(); }
+function doSearch(term){ xmlSearchTerm=term||''; xmlMatchIdx=0; refreshSearch(); }
+function searchStep(dir){ if(!xmlMatchCount) return; xmlMatchIdx=(xmlMatchIdx+dir+xmlMatchCount)%xmlMatchCount; refreshSearch(); }
 function toggleXmlEdit(){
-  if(xmlEditing){ xmlEditing=false; renderOutput(); return; }
+  if(xmlEditing){ xmlEditing=false; renderOutput(); refreshSearch(); return; }
   const ta=document.getElementById('xmlEdit'); if(ta) ta.value=buildXML(currentProfile);
   xmlEditing=true; renderOutput();
-  if(ta){ ta.style.display='block'; ta.focus(); }
+  if(ta){ ta.style.display='block'; xmlMatchIdx=0; if(xmlSearchTerm) refreshSearch(); else ta.focus(); }
 }
 function cancelXmlEdit(){ xmlEditing=false; renderOutput(); toast('Edição do XML descartada.'); }
 function applyXmlEdit(){
