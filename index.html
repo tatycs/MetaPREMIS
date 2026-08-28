@@ -718,8 +718,8 @@ function genEvent(e, L){
     L.push(`    </premis:eventOutcomeInformation>`);
   });
   (e.linkAgents||[]).forEach(la=>{
-    const ag=model.agents.find(a=>a.lid===la.agentLid); if(!ag) return;
-    const id=ag.identifiers[0]||{};
+    const ag=model.agents.find(a=>a.lid===la.agentLid); const id=ag?(ag.identifiers[0]||{}):{type:la.refType,value:la.refValue};
+    if(!has(id.type)&&!has(id.value)) return;
     L.push(`    <premis:linkingAgentIdentifier>`);
     L.push(elv('linkingAgentIdentifierType', id.type, 6));
     L.push(elv('linkingAgentIdentifierValue', id.value, 6));
@@ -727,8 +727,8 @@ function genEvent(e, L){
     L.push(`    </premis:linkingAgentIdentifier>`);
   });
   (e.linkObjects||[]).forEach(lo=>{
-    const ob=model.objects.find(o=>o.lid===lo.objectLid); if(!ob) return;
-    const id=ob.identifiers[0]||{};
+    const ob=model.objects.find(o=>o.lid===lo.objectLid); const id=ob?(ob.identifiers[0]||{}):{type:lo.refType,value:lo.refValue};
+    if(!has(id.type)&&!has(id.value)) return;
     L.push(`    <premis:linkingObjectIdentifier>`);
     L.push(elv('linkingObjectIdentifierType', id.type, 6));
     L.push(elv('linkingObjectIdentifierValue', id.value, 6));
@@ -979,26 +979,34 @@ function validate(profile){
     rights: id=>model.rights.some(x=>x.lid===id),
   };
   const orphan = (ref,kind,id)=> add('bad','dd',`${ref}: vínculo a ${kind} inexistente (${id}) — órfão. Todo vínculo deve apontar para uma entidade do documento (R2.3).`);
+  /* rótulos por VALOR do identificador do XML (não por id interno), para o vínculo ser localizável */
+  const oId=o=>(o.identifiers&&o.identifiers[0]&&o.identifiers[0].value)||o.lid;
+  const aId=a=>(a.identifiers&&a.identifiers[0]&&a.identifiers[0].value)||a.lid;
+  const lblEvent=lid=>{ const e=model.events.find(x=>x.lid===lid); return e?(e.idValue||lid):lid; };
+  const lblRights=lid=>{ const r=model.rights.find(x=>x.lid===lid); return r?(r.idValue||lid):lid; };
+  const lblObject=lid=>{ const o=model.objects.find(x=>x.lid===lid); return o?oId(o):lid; };
+  const lblAgent=lid=>{ const a=model.agents.find(x=>x.lid===lid); return a?aId(a):lid; };
   model.objects.forEach(o=>{
-    (o.linkEvents||[]).forEach(id=>{ if(!exists.event(id)) orphan(`object ${o.lid}/linkingEventIdentifier`,'event',id); });
-    (o.linkRights||[]).forEach(id=>{ if(!exists.rights(id)) orphan(`object ${o.lid}/linkingRightsStatementIdentifier`,'rights',id); });
+    (o.linkEvents||[]).forEach(id=>{ if(!exists.event(id)) orphan(`objeto "${oId(o)}"/linkingEventIdentifier`,'event',lblEvent(id)); });
+    (o.linkRights||[]).forEach(id=>{ if(!exists.rights(id)) orphan(`objeto "${oId(o)}"/linkingRightsStatementIdentifier`,'rights',lblRights(id)); });
     (o.relationships||[]).forEach((rel,ri)=>{
-      const ref=`object ${o.lid}/relationship[${ri+1}]`;
-      (rel.relObjects||[]).forEach(id=>{ if(!exists.object(id)) orphan(`${ref}/relatedObjectIdentifier`,'object',id); });
-      (rel.relEvents||[]).forEach(id=>{ if(!exists.event(id)) orphan(`${ref}/relatedEventIdentifier`,'event',id); });
+      const ref=`objeto "${oId(o)}"/relationship[${ri+1}]`;
+      (rel.relObjects||[]).forEach(id=>{ if(!exists.object(id)) orphan(`${ref}/relatedObjectIdentifier`,'object',lblObject(id)); });
+      (rel.relEvents||[]).forEach(id=>{ if(!exists.event(id)) orphan(`${ref}/relatedEventIdentifier`,'event',lblEvent(id)); });
     });
   });
   model.events.forEach(e=>{
-    (e.linkAgents||[]).forEach(la=>{ if(la&&la.agentLid&&!exists.agent(la.agentLid)) orphan(`event ${e.lid}/linkingAgentIdentifier`,'agent',la.agentLid); });
-    (e.linkObjects||[]).forEach(lo=>{ if(lo&&lo.objectLid&&!exists.object(lo.objectLid)) orphan(`event ${e.lid}/linkingObjectIdentifier`,'object',lo.objectLid); });
+    const eref=`evento "${e.idValue||e.lid}"`;
+    (e.linkAgents||[]).forEach(la=>{ if(la&&!(la.agentLid&&exists.agent(la.agentLid))) orphan(`${eref}/linkingAgentIdentifier`,'agent',la.refValue||lblAgent(la.agentLid)||'?'); });
+    (e.linkObjects||[]).forEach(lo=>{ if(lo&&!(lo.objectLid&&exists.object(lo.objectLid))) orphan(`${eref}/linkingObjectIdentifier`,'object',lo.refValue||lblObject(lo.objectLid)||'?'); });
   });
   model.agents.forEach(a=>{
-    (a.linkEvents||[]).forEach(id=>{ if(!exists.event(id)) orphan(`agent ${a.lid}/linkingEventIdentifier`,'event',id); });
-    (a.linkRights||[]).forEach(id=>{ if(!exists.rights(id)) orphan(`agent ${a.lid}/linkingRightsStatementIdentifier`,'rights',id); });
+    (a.linkEvents||[]).forEach(id=>{ if(!exists.event(id)) orphan(`agente "${aId(a)}"/linkingEventIdentifier`,'event',lblEvent(id)); });
+    (a.linkRights||[]).forEach(id=>{ if(!exists.rights(id)) orphan(`agente "${aId(a)}"/linkingRightsStatementIdentifier`,'rights',lblRights(id)); });
   });
   model.rights.forEach(r=>{
-    (r.linkObjects||[]).forEach(id=>{ if(!exists.object(id)) orphan(`rights ${r.lid}/linkingObjectIdentifier`,'object',id); });
-    (r.linkAgents||[]).forEach(id=>{ if(!exists.agent(id)) orphan(`rights ${r.lid}/linkingAgentIdentifier`,'agent',id); });
+    (r.linkObjects||[]).forEach(id=>{ if(!exists.object(id)) orphan(`direito "${r.idValue||r.lid}"/linkingObjectIdentifier`,'object',lblObject(id)); });
+    (r.linkAgents||[]).forEach(id=>{ if(!exists.agent(id)) orphan(`direito "${r.idValue||r.lid}"/linkingAgentIdentifier`,'agent',lblAgent(id)); });
   });
 
   /* R2.1 — unicidade de identificadores: o par (type,value) deve ser único dentro de
@@ -2026,7 +2034,9 @@ function renderModel(){
     return leaf(`<span class="tico">👤</span><span class="ctitle">${esc(nm)}</span> <span class="src xsd">${esc(a.agentType||'agent')}</span>${role?` <span class="tedge">${esc(role)}</span>`:''}${btns('agents',agLid)}`); };
   const eventNode=e=>{ used.events.add(e.lid);
     const seen=new Set(); let ags='';
-    (e.linkAgents||[]).forEach(la=>{ if(la&&la.agentLid&&!seen.has(la.agentLid)){ seen.add(la.agentLid); ags+=agentNode(la.agentLid,la.role); } });
+    (e.linkAgents||[]).forEach(la=>{ if(!la) return;
+      if(la.agentLid&&findAg(la.agentLid)){ if(!seen.has(la.agentLid)){ seen.add(la.agentLid); ags+=agentNode(la.agentLid,la.role); } }
+      else { ags+=leaf(`<span class="tico">⚠</span><span class="ctitle">agente não encontrado</span> <span class="tedge bad">${esc(la.refValue||la.agentLid||'?')}</span>`); } });
     /* agentes vinculados por linkingEventIdentifier (lado do agente, agent.linkEvents) também aparecem sob o evento */
     model.agents.forEach(a=>{ if(!seen.has(a.lid) && (a.linkEvents||[]).includes(e.lid)){ seen.add(a.lid); ags+=agentNode(a.lid,''); } });
     return wrap(e.lid,`<span class="tico">⏱</span><span class="ctitle">${esc(e.eventType||'(sem tipo)')}</span> <span class="tedge">${esc(e.dateTime||'sem data')}</span> <span class="cid">${esc(e.idValue||e.lid)}</span>${btns('events',e.lid)}`,ags); };
@@ -2724,8 +2734,10 @@ function parsePremisXML(xmlString){
     delete o._le; delete o._lr;
   });
   m.events.forEach(e=>{
-    e.linkAgents=(e._la||[]).map(p=>{ const l=rs(aMap,p,'event→agent'); return l?{agentLid:l,role:p.role||''}:null; }).filter(Boolean);
-    e.linkObjects=(e._lo||[]).map(p=>{ const l=rs(oMap,p,'event→object'); return l?{objectLid:l,role:p.role||''}:null; }).filter(Boolean);
+    /* mantém o vínculo mesmo quando não resolve: guarda o (type,value) do XML para o
+       verificador poder apontar QUAL agente/objeto está solto, pelo valor que você escreveu. */
+    e.linkAgents=(e._la||[]).map(p=>({agentLid:aMap.get(K(p.type,p.value))||null, refType:p.type||'', refValue:p.value||'', role:p.role||''})).filter(x=>x.agentLid||has(x.refValue)||has(x.refType));
+    e.linkObjects=(e._lo||[]).map(p=>({objectLid:oMap.get(K(p.type,p.value))||null, refType:p.type||'', refValue:p.value||'', role:p.role||''})).filter(x=>x.objectLid||has(x.refValue)||has(x.refType));
     delete e._la; delete e._lo;
   });
   m.agents.forEach(a=>{ a.linkEvents=(a._le||[]).map(p=>rs(eMap,p,'agent→event')).filter(Boolean); a.linkRights=(a._lr||[]).map(p=>rs(rMap,p,'agent→rights')).filter(Boolean); delete a._le; delete a._lr; });
