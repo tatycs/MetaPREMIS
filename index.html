@@ -108,7 +108,7 @@
   .src.am{background:var(--warn-bg);color:var(--warn)}
   .src.dd{background:var(--paper);color:var(--ink-soft);border:1px solid var(--line)}
   .field input,.field select,.field textarea{width:100%;font-family:var(--sans);font-size:13.5px;padding:7px 9px;border:1px solid var(--line);border-radius:3px;background:var(--surface);color:var(--ink)}
-  .field textarea{font-family:var(--mono);font-size:11px;min-height:48px;resize:vertical}
+  .field textarea{font-family:var(--mono);font-size:11px;min-height:96px;line-height:1.5;resize:vertical}
   .field input:focus,.field select:focus,.field textarea:focus{outline:2px solid var(--amber);outline-offset:0;border-color:var(--amber)}
   .field .hint{font-size:10.5px;color:var(--ink-soft);margin-top:2px}
   .field-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -1565,7 +1565,7 @@ function renderObjectForm(){
         <div class="subblock"><div class="sh"><span>formatDesignation [0..1]${helpIcon('formatDesignation')}</span></div><div class="field-row">${fld('formatName','xsd',`fmt_n_${ci}_${mi}`,fmt.name,'ex.: MP3','',false,'syncObj','formatName')}${fld('formatVersion','dd',`fmt_v_${ci}_${mi}`,fmt.version,'opcional')}</div></div>
         <div class="subblock"><div class="sh"><span>formatRegistry [0..1]${helpIcon('formatRegistry')}</span></div>${fld('formatRegistryName','xsd',`fmt_rn_${ci}_${mi}`,fmt.regName,'ex.: PRONOM','')}${fld('formatRegistryKey','xsd',`fmt_rk_${ci}_${mi}`,fmt.regKey,'ex.: fmt/134','')}${vsel('formatRegistryRole','dd',`fmt_rr_${ci}_${mi}`,fmt.regRole,LOCVOC.formatRegistryRole,'syncObj',false,'formatRegistryRole')}</div>
         <label style="font-size:11px;font-weight:600">formatNote [0..n]${helpIcon('formatNote')}</label>
-        ${(fmt.notes||[]).map((n,ni)=>`<div style="display:flex;gap:6px;margin-bottom:6px"><input id="fmt_note_${ci}_${mi}_${ni}" value="${esc(n)}" placeholder="nota sobre o formato" oninput="syncObj()" style="flex:1;font-size:13.5px;padding:7px 9px;border:1px solid var(--line);border-radius:3px;background:var(--surface);color:var(--ink)"><button class="rm-x" onclick="rmFmtNote(${ci},${mi},${ni})" title="remover nota">×</button></div>`).join('')}
+        ${(fmt.notes||[]).map((n,ni)=>`<div style="display:flex;gap:6px;margin-bottom:6px;align-items:flex-start"><textarea id="fmt_note_${ci}_${mi}_${ni}" placeholder="nota sobre o formato" oninput="syncObj()" style="flex:1;font-family:var(--mono);font-size:11px;line-height:1.5;min-height:96px;resize:vertical;padding:7px 9px;border:1px solid var(--line);border-radius:3px;background:var(--surface);color:var(--ink)">${esc(n)}</textarea><button class="rm-x" onclick="rmFmtNote(${ci},${mi},${ni})" title="remover nota">×</button></div>`).join('')}
         <button class="add-btn" onclick="addFmtNote(${ci},${mi})">+ formatNote</button>
         <div class="card-min">Um format precisa de <b>formatName</b> ou <b>formatRegistry</b> (Name+Key) — pode ter os dois.</div></div>`;
     });
@@ -1750,11 +1750,11 @@ function renderEventForm(){
     ${fld('eventDateTime','dd','ev_dt',e.dateTime,'2006-07-16T19:20:30+01:00','DD (2.3): forma estruturada e convenção padronizada; registre o horário mais específico possível e designe o fuso.',true,'syncEvt','eventDateTime')}</div></div>`;
 
   h += `<div class="block ${collapsed['e_det']!==false?'collapsed':''}">${blockHead('e_det','eventDetailInformation','0..n',false,'eventDetailInformation')}<div class="bb">`;
-  e.details.forEach((d,i)=>{ h += `<div class="rep-item"><div class="rh"><span>detalhe ${i+1}</span><button class="rm-x" onclick="rmEvt('details',${i})">×</button></div>${fld('eventDetail','dd',`ev_det_${i}`,d.detail,'descrição','',false,'syncEvt')}${extList('eventDetailExtension','details.'+i+'.exts',d.exts)}</div>`; });
+  e.details.forEach((d,i)=>{ h += `<div class="rep-item"><div class="rh"><span>detalhe ${i+1}</span><button class="rm-x" onclick="rmEvt('details',${i})">×</button></div>${ta('eventDetail','dd',`ev_det_${i}`,d.detail,'descrição','',false,'syncEvt')}${extList('eventDetailExtension','details.'+i+'.exts',d.exts)}</div>`; });
   h += `<button class="add-btn" onclick="addEvt('details')">+ eventDetailInformation</button></div></div>`;
 
   h += `<div class="block ${collapsed['e_out']!==false?'collapsed':''}">${blockHead('e_out','eventOutcomeInformation','0..n',false,'eventOutcomeInformation')}<div class="bb">`;
-  e.outcomes.forEach((o,i)=>{ h += `<div class="rep-item"><div class="rh"><span>resultado ${i+1}</span><button class="rm-x" onclick="rmEvt('outcomes',${i})">×</button></div>${vsel('eventOutcome','dd',`ev_out_${i}`,o.outcome,LOCVOC.eventOutcome,'syncEvt',false,'eventOutcome')}${fld('eventOutcomeDetailNote','dd',`ev_outn_${i}`,o.detailNote,'nota','',false,'syncEvt')}${extList('eventOutcomeDetailExtension','outcomes.'+i+'.exts',o.exts)}</div>`; });
+  e.outcomes.forEach((o,i)=>{ h += `<div class="rep-item"><div class="rh"><span>resultado ${i+1}</span><button class="rm-x" onclick="rmEvt('outcomes',${i})">×</button></div>${vsel('eventOutcome','dd',`ev_out_${i}`,o.outcome,LOCVOC.eventOutcome,'syncEvt',false,'eventOutcome')}${ta('eventOutcomeDetailNote','dd',`ev_outn_${i}`,o.detailNote,'nota','',false,'syncEvt')}${extList('eventOutcomeDetailExtension','outcomes.'+i+'.exts',o.exts)}</div>`; });
   h += `<button class="add-btn" onclick="addEvt('outcomes')">+ eventOutcomeInformation</button></div></div>`;
 
   h += `<div class="block ${collapsed['e_la']!==false?'collapsed':''}">${blockHead('e_la','linkingAgentIdentifier','0..n',false,'linkingAgentIdentifier')}<div class="bb">`;
@@ -1817,7 +1817,7 @@ function renderAgentForm(){
     ${fld('agentVersion','dd','ag_ver',a.agentVersion,'ex.: 1.13.2','',false,'syncAgt','agentVersion')}</div></div>`;
 
   h += `<div class="block ${collapsed['a_nt']!==false?'collapsed':''}">${blockHead('a_nt','agentNote','0..n',false,'agentNote')}<div class="bb">`;
-  a.notes.forEach((n,i)=>{ h += `<div class="rep-item"><div class="rh"><span>nota ${i+1}</span><button class="rm-x" onclick="rmAgt('notes',${i})">×</button></div>${fld('agentNote','dd',`ag_nt_${i}`,n.value,'observação','',false,'syncAgt')}</div>`; });
+  a.notes.forEach((n,i)=>{ h += `<div class="rep-item"><div class="rh"><span>nota ${i+1}</span><button class="rm-x" onclick="rmAgt('notes',${i})">×</button></div>${ta('agentNote','dd',`ag_nt_${i}`,n.value,'observação','',false,'syncAgt')}</div>`; });
   h += `<button class="add-btn" onclick="addAgt('notes')">+ agentNote</button></div></div>`;
   h += `<div class="block ${collapsed['a_ext']!==false?'collapsed':''}">${blockHead('a_ext','agentExtension','0..n',false,'agentExtension')}<div class="bb">${extList('agentExtension','exts',a.exts,'agentExtension')}</div></div>`;
 
@@ -1882,7 +1882,7 @@ function renderRightsForm(){
     </select><div class="hint">Define qual bloco de informação acompanha o statement.</div></div></div></div>`;
 
   const noteList=(arr,prefix,label)=>{ let s=`<div class="subblock"><div class="sh"><span>${label} [0..n]</span></div>`;
-    (arr||[]).forEach((n,i)=>{ s+=`<div class="rep-item"><div class="rh"><span>nota ${i+1}</span><button class="rm-x" onclick="rmRgtSub('${prefix}',${i})">×</button></div>${fld(label,'dd',`rg_${prefix}_${i}`,n.value,'','',false,'syncRgt')}</div>`; });
+    (arr||[]).forEach((n,i)=>{ s+=`<div class="rep-item"><div class="rh"><span>nota ${i+1}</span><button class="rm-x" onclick="rmRgtSub('${prefix}',${i})">×</button></div>${ta(label,'dd',`rg_${prefix}_${i}`,n.value,'','',false,'syncRgt')}</div>`; });
     s+=`<button class="add-btn" onclick="addRgtSub('${prefix}')">+ ${label}</button></div>`; return s; };
   const docList=(arr,prefix,label)=>{ let s=`<div class="subblock"><div class="sh"><span>${label} [0..n]</span></div>`;
     (arr||[]).forEach((d,i)=>{ s+=`<div class="rep-item"><div class="rh"><span>doc ${i+1}</span><button class="rm-x" onclick="rmRgtSub('${prefix}',${i})">×</button></div>
@@ -1931,7 +1931,7 @@ function renderRightsForm(){
     h += `<button class="add-btn" onclick="addRgtSub2('granted',${i},'restrictions')">+ restriction</button>
       <div class="field-row" style="margin-top:8px">${fld('termOfGrant: startDate','dd',`rg_g_gs_${i}`,g.gStart,'','startDate obrigatório se o termo for usado',false,'syncRgt')}${fld('endDate','dd',`rg_g_ge_${i}`,g.gEnd,'','',false,'syncRgt')}</div>
       <div class="field-row">${fld('termOfRestriction: startDate','dd',`rg_g_rs_${i}`,g.rStart,'','',false,'syncRgt')}${fld('endDate','dd',`rg_g_re_${i}`,g.rEnd,'','',false,'syncRgt')}</div>`;
-    (g.notes||[]).forEach((n,ni)=>{ h+=`<div class="rep-item"><div class="rh"><span>nota ${ni+1}</span><button class="rm-x" onclick="rmRgtSub2('granted',${i},'notes',${ni})">×</button></div>${fld('rightsGrantedNote','dd',`rg_g_n_${i}_${ni}`,n.value,'','',false,'syncRgt')}</div>`; });
+    (g.notes||[]).forEach((n,ni)=>{ h+=`<div class="rep-item"><div class="rh"><span>nota ${ni+1}</span><button class="rm-x" onclick="rmRgtSub2('granted',${i},'notes',${ni})">×</button></div>${ta('rightsGrantedNote','dd',`rg_g_n_${i}_${ni}`,n.value,'','',false,'syncRgt')}</div>`; });
     h += `<button class="add-btn" onclick="addRgtSub2('granted',${i},'notes')">+ rightsGrantedNote</button></div>`;
   });
   h += `<button class="add-btn" onclick="addRgtSub('granted')">+ rightsGranted</button></div></div>`;
