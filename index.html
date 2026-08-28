@@ -869,17 +869,35 @@ function buildXML(profile){
 }
 
 /* ---- validação ---- */
-const ISO8601 = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?([+-]\d{2}:\d{2}|Z)?$/;
+/* Aceitação de eventDateTime igual à do Archivematica (load_premis_events_from_xml.py:
+   Django dateparse.parse_datetime → fallback parse_date). Aceita:
+   - data só: AAAA-MM-DD
+   - data-hora: AAAA-MM-DD[T ou espaço]hh:mm[:ss[.frac]] com tz opcional (Z, ±hh, ±hh:mm, ±hhmm)
+   Ou seja, segundos e fuso são OPCIONAIS. */
+function amDateTimeOk(v){
+  v=(v||'').trim(); if(!v) return false;
+  const dOnly=/^(\d{4})-(\d{1,2})-(\d{1,2})$/;
+  const dt=/^(\d{4})-(\d{1,2})-(\d{1,2})[T ](\d{1,2}):(\d{1,2})(?::(\d{1,2})(?:[.,]\d{1,12})?)?\s*(?:Z|[+-]\d{2}(?::?\d{2})?)?$/;
+  const m=dOnly.exec(v)||dt.exec(v); if(!m) return false;
+  const mo=+m[2], d=+m[3]; if(mo<1||mo>12||d<1||d>31) return false;
+  if(m[4]!==undefined){ const H=+m[4], Mi=+m[5], S=m[6]!==undefined?+m[6]:0; if(H>23||Mi>59||S>59) return false; }
+  return true;
+}
 function validate(profile){
   const items = [];
   const add=(level,source,msg)=>items.push({level,source,msg});
+  /* rótulos por VALOR do identificador do XML (não por id interno evt-/obj-…) */
+  const oId=o=>(o.identifiers&&o.identifiers[0]&&o.identifiers[0].value)||o.lid;
+  const aId=a=>(a.identifiers&&a.identifiers[0]&&a.identifiers[0].value)||a.lid;
+  const eId=e=>e.idValue||e.lid;
+  const rId=r=>r.idValue||r.lid;
   if(model.objects.length===0) add('bad','XSD','Documento precisa de ao menos um object.');
   else add('ok','XSD',`${model.objects.length} object(s) — ordem object→event→agent respeitada.`);
   add('ok','XSD','version="3.0" presente e enumerado (tipo version3).');
   model.objects.forEach(o=>{
     const t=o.objType||'file';
     const allow=allowFor(t);
-    const ref=`object ${o.lid} (${t})`;
+    const ref=`objeto "${oId(o)}" (${t})`;
     if(o.identifiers.length===0 || o.identifiers.some(id=>!has(id.type)||!has(id.value)))
       add('bad','XSD',`${ref}: objectIdentifier exige Type e Value (1..n).`);
     if(allow.chars){
@@ -915,20 +933,20 @@ function validate(profile){
     /* objetos que não são file (IE/representation/bitstream) são resumidos numa nota única do perfil, mais abaixo */
   });
   model.events.forEach(e=>{
-    const ref=`event ${e.lid}`;
+    const ref=`evento "${eId(e)}"`;
     if(!has(e.idType)||!has(e.idValue)) add('bad','XSD',`${ref}: eventIdentifier exige Type e Value.`);
     if(!has(e.eventType)) add('bad','XSD',`${ref}: eventType é obrigatório.`);
     if(!has(e.dateTime)) add('bad','XSD',`${ref}: eventDateTime é obrigatório.`);
-    else if(profile==='archivematica' && !ISO8601.test(e.dateTime.trim())) add('warn','Archivematica',`${ref}: eventDateTime fora de ISO 8601. XSD aceita (xs:string); Archivematica exige.`);
+    else if(profile==='archivematica' && !amDateTimeOk(e.dateTime)) add('bad','Archivematica',`${ref}: eventDateTime "${e.dateTime.trim()}" — o Archivematica não consegue interpretar essa data/hora e a ingestão falha. Aceite: AAAA-MM-DD (data só) ou AAAA-MM-DDThh:mm[:ss][±hh:mm/Z] (segundos e fuso opcionais).`);
     if(profile==='archivematica' && (e.linkAgents||[]).length===0) add('warn','Archivematica',`${ref}: sem agente vinculado (XSD opcional; Archivematica espera).`);
   });
   model.agents.forEach(a=>{
-    if(a.identifiers.length===0 || a.identifiers.some(id=>!has(id.type)||!has(id.value))) add('bad','XSD',`agent ${a.lid}: agentIdentifier exige Type e Value (1..n).`);
-    (a.linkEnvironments||[]).forEach((le,i)=>{ if((has(le.type)||has(le.value))&&(!has(le.type)||!has(le.value))) add('bad','XSD',`agent ${a.lid}/linkingEnvironmentIdentifier[${i+1}]: Type e Value são exigidos juntos.`); });
+    if(a.identifiers.length===0 || a.identifiers.some(id=>!has(id.type)||!has(id.value))) add('bad','XSD',`agente "${aId(a)}": agentIdentifier exige Type e Value (1..n).`);
+    (a.linkEnvironments||[]).forEach((le,i)=>{ if((has(le.type)||has(le.value))&&(!has(le.type)||!has(le.value))) add('bad','XSD',`agente "${aId(a)}"/linkingEnvironmentIdentifier[${i+1}]: Type e Value são exigidos juntos.`); });
   });
   /* rights */
   model.rights.forEach(r=>{
-    const ref=`rights ${r.lid}`;
+    const ref=`direito "${rId(r)}"`;
     if(!has(r.idType)||!has(r.idValue)) add('bad','XSD',`${ref}: rightsStatementIdentifier exige Type e Value.`);
     if(!has(r.basis)) add('bad','XSD',`${ref}: rightsBasis é obrigatório.`);
     if(r.basis==='copyright'){
@@ -977,7 +995,7 @@ function validate(profile){
     (o.relationships||[]).forEach((rel,ri)=>{
       const anyR = has(rel.type)||has(rel.subType)||rel.relObjects.length>0;
       if(!anyR) return;
-      const ref=`object ${o.lid}/relationship[${ri+1}]`;
+      const ref=`objeto "${oId(o)}"/relationship[${ri+1}]`;
       if(!has(rel.type)) add('bad','XSD',`${ref}: relationshipType é obrigatório.`);
       if(!has(rel.subType)) add('bad','XSD',`${ref}: relationshipSubType é obrigatório.`);
       if(rel.relObjects.length===0) add('bad','XSD',`${ref}: relatedObjectIdentifier exige ao menos um objeto relacionado (1..n).`);
@@ -997,8 +1015,6 @@ function validate(profile){
   };
   const orphan = (ref,kind,id)=> add('bad','dd',`${ref}: vínculo a ${kind} inexistente (${id}) — órfão. Todo vínculo deve apontar para uma entidade do documento (R2.3).`);
   /* rótulos por VALOR do identificador do XML (não por id interno), para o vínculo ser localizável */
-  const oId=o=>(o.identifiers&&o.identifiers[0]&&o.identifiers[0].value)||o.lid;
-  const aId=a=>(a.identifiers&&a.identifiers[0]&&a.identifiers[0].value)||a.lid;
   const lblEvent=lid=>{ const e=model.events.find(x=>x.lid===lid); return e?(e.idValue||lid):lid; };
   const lblRights=lid=>{ const r=model.rights.find(x=>x.lid===lid); return r?(r.idValue||lid):lid; };
   const lblObject=lid=>{ const o=model.objects.find(x=>x.lid===lid); return o?oId(o):lid; };
@@ -1054,7 +1070,7 @@ function validate(profile){
     const out = (a.linkEvents||[]).some(id=>exists.event(id)) || (a.linkRights||[]).some(id=>exists.rights(id));
     const incoming = model.events.some(e=>(e.linkAgents||[]).some(la=>la.agentLid===a.lid))
                   || model.rights.some(r=>(r.linkAgents||[]).includes(a.lid));
-    if(!out && !incoming) add('info','dd',`agent ${a.lid}: sem vínculo a evento ou direito. É conforme (linking* é opcional); apenas aviso (R2.5).`);
+    if(!out && !incoming) add('info','dd',`agente "${aId(a)}": sem vínculo a evento ou direito. É conforme (linking* é opcional); apenas aviso (R2.5).`);
   });
 
   /* ---- Camada DD — recomendações do dicionário (nível "should": avisam, não bloqueiam) ---- */
@@ -1076,7 +1092,7 @@ function validate(profile){
   const dchk=(val,ref,unit)=>{ if(!has(val)) return; const v=String(val).trim(); if(/^(open|unknown)$/i.test(v)) return; if(!ISODATE.test(v)) add('warn','dd',`${ref}: ${unit}="${val}" fora de ISO 8601 (recomendado: AAAA, AAAA-MM, AAAA-MM-DD ou data e hora).`); };
   const intchk=(val,ref,unit)=>{ if(!has(val)) return; if(!/^\d+$/.test(String(val).trim())) add('warn','dd',`${ref}: ${unit}="${val}" deveria ser um inteiro não negativo.`); };
   model.objects.forEach(o=>{
-    const t=o.objType||'file'; const allow=allowFor(t); const ref=`object ${o.lid}`;
+    const t=o.objType||'file'; const allow=allowFor(t); const ref=`objeto "${oId(o)}"`;
     if(allow.chars) (o.characteristics||[]).forEach((c,ci)=>{
       intchk(c.compositionUnknown?'':c.compositionLevel, `${ref}/characteristics[${ci+1}]`, 'compositionLevel');
       intchk(c.size, `${ref}/characteristics[${ci+1}]`, 'size');
@@ -1095,7 +1111,7 @@ function validate(profile){
       if(rel.relObjSeq && Object.keys(rel.relObjSeq).length && !/structural/i.test(rel.type||'')) add('warn','dd',`${rref}: relatedObjectSequence só se aplica a relação structural (DD).`); });
   });
   model.events.forEach(e=>{
-    const ref = has(e.idValue) ? `event "${e.idValue}"${e.lid?` (${e.lid})`:''}` : `event ${e.lid}`;
+    const ref = `evento "${eId(e)}"`;
     const label=e.eventType||'', normLbl=NORM(label);
     const codeOfLabel=EVENTTYPE_BYLABEL[normLbl], inLoC=!!codeOfLabel;
     const uri=(e.evtURI||'').trim(), auth=(e.evtAuth||'').trim();
@@ -1119,9 +1135,9 @@ function validate(profile){
       }
     }
   });
-  model.agents.forEach(a=>vchk('agentType', a.agentType, `agent ${a.lid}`));
+  model.agents.forEach(a=>vchk('agentType', a.agentType, `agente "${aId(a)}"`));
   model.rights.forEach(r=>{
-    const ref=`rights ${r.lid}`;
+    const ref=`direito "${rId(r)}"`;
     if(r.basis==='copyright'){ vchk('copyrightStatus', r.c_status, ref); if(has(r.c_jurisdiction)&&!/^[A-Za-z]{2}$/.test(r.c_jurisdiction.trim())) add('warn','dd',`${ref}: copyrightJurisdiction="${r.c_jurisdiction}" — recomenda-se código de país ISO 3166 (2 letras).`); dchk(r.c_date,ref,'copyrightStatusDeterminationDate'); dchk(r.c_dStart,ref,'copyright startDate'); dchk(r.c_dEnd,ref,'copyright endDate'); }
     else if(r.basis==='license'){ dchk(r.l_dStart,ref,'license startDate'); dchk(r.l_dEnd,ref,'license endDate'); }
     else if(r.basis==='statute'){ dchk(r.s_date,ref,'statuteInformationDeterminationDate'); dchk(r.s_dStart,ref,'statute startDate'); dchk(r.s_dEnd,ref,'statute endDate'); }
