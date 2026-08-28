@@ -911,9 +911,8 @@ function validate(profile){
     if(t==='file'){
       if(profile==='archivematica' && !has(o.originalName)) add('warn','Archivematica',`${ref}: sem originalName — elo com o arquivo em objects/.`);
       else if(profile==='archivematica' && !/^objects\//.test(o.originalName.trim())) add('warn','Archivematica',`${ref}: originalName não começa com objects/.`);
-    } else if(profile==='archivematica'){
-      add('info','Archivematica',`${ref}: o template oficial de importação do Archivematica usa objetos xsi:type=file ancorados em objects/; o comportamento com o tipo ${t} não está documentado na página consultada.`);
     }
+    /* objetos que não são file (IE/representation/bitstream) são resumidos numa nota única do perfil, mais abaixo */
   });
   model.events.forEach(e=>{
     const ref=`event ${e.lid}`;
@@ -951,6 +950,28 @@ function validate(profile){
       if(has(g.rEnd)&&!has(g.rStart)) add('bad','XSD',`${ref}/rightsGranted[${gi+1}]: termOfRestriction exige startDate quando usado.`);
     });
   });
+  /* Perfil Archivematica — extensões e o que é ignorado (mas preservado no premis.xml).
+     Fonte: artefactual/archivematica v1.18.0, load_premis_events_from_xml.py (valida o
+     metadata/premis.xml contra o premis.xsd via assertValid; lê só object[@xsi:type=file],
+     event e agent); premis-v3-0.xsd, extensionComplexType: <xs:any namespace="##any"
+     processContents="lax">. */
+  if(profile==='archivematica'){
+    const extHasAny=it=>it&&((typeof it==='string'&&has(it))||has(it.x)||has(it.a));
+    let extCount=0;
+    model.agents.forEach(a=>(a.exts||[]).forEach(it=>{ if(extHasAny(it)) extCount++; }));
+    model.events.forEach(e=>{ (e.details||[]).forEach(d=>(d.exts||[]).forEach(it=>{ if(extHasAny(it)) extCount++; })); (e.outcomes||[]).forEach(o=>(o.exts||[]).forEach(it=>{ if(extHasAny(it)) extCount++; })); });
+    model.objects.forEach(o=>{
+      (o.characteristics||[]).forEach(c=>{ (c.exts||[]).forEach(it=>{ if(extHasAny(it)) extCount++; }); (c.creatingApps||[]).forEach(ca=>(ca.exts||[]).forEach(it=>{ if(extHasAny(it)) extCount++; })); });
+      (o.significantProperties||[]).forEach(sp=>(sp.exts||[]).forEach(it=>{ if(extHasAny(it)) extCount++; }));
+      (o.signatures||[]).forEach(s=>{ (s.keyInfos||[]).forEach(it=>{ if(extHasAny(it)) extCount++; }); (s.sigExts||[]).forEach(it=>{ if(extHasAny(it)) extCount++; }); });
+      (o.envExts||[]).forEach(it=>{ if(extHasAny(it)) extCount++; });
+      (o.envDesignations||[]).forEach(d=>(d.exts||[]).forEach(it=>{ if(extHasAny(it)) extCount++; }));
+    });
+    if(extCount>0) add('info','Archivematica',`${extCount} extensão(ões) (xs:any) no documento. O Archivematica valida o metadata/premis.xml contra o próprio premis.xsd 3.0, cujo ponto de extensão é <xs:any namespace="##any" processContents="lax"> — qualquer conteúdo de extensão, COM OU SEM URI/esquema, é aceito e ignorado. Não é preciso URI para a extensão. Se você viu erro de extensão, foi ao validar contra um XSD-invólucro que importa o esquema da extensão: valide contra o premis.xsd puro. Se passou na "verificar integridade" (mesmo premis.xsd), passa no Archivematica.`);
+    const ieCount=model.objects.filter(o=>normv(o.objType)!=='file').length;
+    if(ieCount>0) add('info','Archivematica',`${ieCount} objeto(s) que não são xsi:type=file (intellectualEntity/representation/bitstream): o carregador de eventos do Archivematica lê só object[@xsi:type=file], então esses são IGNORADOS na importação — mas permanecem no premis.xml completo que vai para o AIP. Ignorar aqui é inofensivo.`);
+    if(model.rights.length>0) add('info','Archivematica',`${model.rights.length} rights no documento: o Archivematica trata direitos por rights.csv, não pela importação do premis.xml, então IGNORA as entidades <rights> daqui — mas elas permanecem no premis.xml completo (bom para o AIP). Não causam erro de validação.`);
+  }
   /* relationship — estrutura (XSD); a existência dos alvos é checada na Camada 2 abaixo */
   model.objects.forEach(o=>{
     (o.relationships||[]).forEach((rel,ri)=>{
