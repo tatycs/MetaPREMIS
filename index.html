@@ -1991,7 +1991,10 @@ function renderModel(){
     const nm=(a.names&&a.names[0]&&a.names[0].value)||(a.identifiers[0]||{}).value||'(sem nome)';
     return leaf(`<span class="tico">👤</span><span class="ctitle">${esc(nm)}</span> <span class="src xsd">${esc(a.agentType||'agent')}</span>${role?` <span class="tedge">${esc(role)}</span>`:''}${btns('agents',agLid)}`); };
   const eventNode=e=>{ used.events.add(e.lid);
-    const ags=(e.linkAgents||[]).map(la=>agentNode(la.agentLid,la.role)).filter(Boolean).join('');
+    const seen=new Set(); let ags='';
+    (e.linkAgents||[]).forEach(la=>{ if(la&&la.agentLid&&!seen.has(la.agentLid)){ seen.add(la.agentLid); ags+=agentNode(la.agentLid,la.role); } });
+    /* agentes vinculados por linkingEventIdentifier (lado do agente, agent.linkEvents) também aparecem sob o evento */
+    model.agents.forEach(a=>{ if(!seen.has(a.lid) && (a.linkEvents||[]).includes(e.lid)){ seen.add(a.lid); ags+=agentNode(a.lid,''); } });
     return wrap(e.lid,`<span class="tico">⏱</span><span class="ctitle">${esc(e.eventType||'(sem tipo)')}</span> <span class="tedge">${esc(e.dateTime||'sem data')}</span> <span class="cid">${esc(e.idValue||e.lid)}</span>${btns('events',e.lid)}`,ags); };
   const rightNode=r=>{ used.rights.add(r.lid);
     const ags=(r.linkAgents||[]).map(agLid=>agentNode(agLid,'')).filter(Boolean).join('');
@@ -3250,7 +3253,7 @@ function bind(){
   document.getElementById('btnVerify').onclick=()=>verifyIntegrity();
   document.getElementById('btnState').onclick=()=>{if(currentEnt==='object')syncObj();else if(currentEnt==='event')syncEvt();else if(currentEnt==='rights')syncRgt();else syncAgt();download('metapremis-trabalho.json',JSON.stringify({model,lidCounter},null,2),'application/json');};
   document.getElementById('btnLoad').onclick=()=>document.getElementById('stateFile').click();
-  document.getElementById('stateFile').onchange=ev=>{const f=ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=e=>{try{const data=JSON.parse(e.target.result);Object.assign(model,{objects:[],events:[],agents:[],rights:[],relationships:[]},data.model);lidCounter=data.lidCounter||1;objDraft=mk.object();evtDraft=mk.event();agtDraft=mk.agent();rgtDraft=null;renderForm();renderModel();renderOutput();}catch(err){alert('Arquivo inválido: '+err.message);}};r.readAsText(f);};
+  document.getElementById('stateFile').onchange=ev=>{const f=ev.target.files[0];if(!f){return;}const filled=model.objects.length||model.events.length||model.agents.length||model.rights.length;if(filled&&!confirm('Abrir um trabalho substitui tudo que está na tela pelo arquivo. Continuar?')){ev.target.value='';return;}const r=new FileReader();r.onload=e=>{try{const data=JSON.parse(e.target.result);if(!data||!data.model)throw new Error('sem bloco "model" — não parece um arquivo de trabalho do MetaPREMIS');Object.assign(model,{objects:[],events:[],agents:[],rights:[],relationships:[]},data.model);lidCounter=data.lidCounter||1;editing.object=editing.event=editing.agent=editing.rights=null;objDraft=mk.object();evtDraft=mk.event();agtDraft=mk.agent();rgtDraft=null;renderForm();renderModel();renderOutput();}catch(err){alert('Arquivo inválido: '+err.message);}finally{ev.target.value='';}};r.readAsText(f);};
 }
 
 bind(); applyTheme(document.documentElement.getAttribute('data-theme')||'light'); renderSteps(); renderForm(); renderModel(); renderOutput();
