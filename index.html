@@ -311,6 +311,7 @@
       <button class="btn" id="btnVerify">verificar integridade</button>
       <button class="btn ghost" id="btnState">salvar trabalho</button>
       <button class="btn ghost" id="btnLoad">abrir trabalho</button>
+      <button class="btn ghost" id="btnClear" title="Esvazia o modelo para começar do zero (o rascunho salvo no navegador também é apagado)">limpar tela</button>
       <input type="file" id="stateFile" accept=".json" style="display:none">
     </div>
 
@@ -2083,7 +2084,52 @@ function copyEnt(coll,lid){
 
 /* ---- saída ---- */
 function highlight(xml){return esc(xml).replace(/(&lt;\?[\s\S]*?\?&gt;)/g,'<span class="dec">$1</span>').replace(/(&lt;\/?)([a-zA-Z:]+)/g,'$1<span class="tag">$2</span>').replace(/([a-zA-Z:]+)=(&quot;.*?&quot;)/g,'<span class="at">$1</span>=<span class="val">$2</span>');}
+/* ---- autosave no navegador (localStorage): sobrevive a refresh / fechar sem querer ---- */
+const AUTOSAVE_KEY='metapremis-autosave';
+let _autosaveT=null, _autosaveReady=false;
+function autosaveNow(){ try{ if(model.objects.length||model.events.length||model.agents.length||model.rights.length) localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({model,lidCounter,ts:Date.now()})); else localStorage.removeItem(AUTOSAVE_KEY); }catch(e){} }
+function scheduleAutosave(){ if(!_autosaveReady||_autosaveT) return; _autosaveT=setTimeout(()=>{_autosaveT=null;autosaveNow();},400); }
+function clearAutosave(){ try{ localStorage.removeItem(AUTOSAVE_KEY); }catch(e){} }
+function _modelEmpty(){ return !(model.objects.length||model.events.length||model.agents.length||model.rights.length); }
+function fmtAgo(ts){ const s=Math.max(0,Math.round((Date.now()-ts)/1000)); if(s<60)return 'há instantes'; const m=Math.round(s/60); if(m<60)return `há ${m} min`; const h=Math.round(m/60); if(h<24)return `há ${h} h`; return `há ${Math.round(h/24)} dia(s)`; }
+function clearScreen(ask){
+  if(ask && !_modelEmpty() && !confirm('Limpar tela apaga tudo do modelo e o rascunho salvo no navegador. Isso não pode ser desfeito. Continuar?')) return false;
+  Object.assign(model,{objects:[],events:[],agents:[],rights:[],relationships:[]});
+  lidCounter=1; editing.object=editing.event=editing.agent=editing.rights=null;
+  objDraft=mk.object(); evtDraft=mk.event(); agtDraft=mk.agent(); rgtDraft=null;
+  clearAutosave(); const b=document.getElementById('restoreBanner'); if(b) b.remove();
+  renderForm(); renderModel(); renderOutput(); return true;
+}
+function showRestoreBanner(ts){
+  const host=document.getElementById('modelHost'); if(!host) return;
+  const old=document.getElementById('restoreBanner'); if(old) old.remove();
+  const b=document.createElement('div'); b.id='restoreBanner';
+  b.style.cssText='background:var(--amber,#c47f00);color:#fff;padding:8px 10px;border-radius:8px;margin-bottom:8px;font-size:.85rem;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap';
+  const s=document.createElement('span'); s.textContent=`↩ Trabalho recuperado automaticamente (${fmtAgo(ts)}). Continue de onde parou.`;
+  const grp=document.createElement('span'); grp.style.cssText='display:flex;gap:6px;align-items:center';
+  const btn=document.createElement('button'); btn.textContent='descartar e limpar'; btn.style.cssText='padding:2px 8px;font-size:.8rem;background:rgba(255,255,255,.2);color:#fff;border:1px solid rgba(255,255,255,.5);border-radius:6px;cursor:pointer';
+  btn.onclick=()=>{ if(clearScreen(false)) toast('Tela limpa.'); };
+  const x=document.createElement('button'); x.textContent='×'; x.title='fechar aviso (mantém os dados)'; x.style.cssText='padding:1px 7px;font-size:1rem;line-height:1;background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5);border-radius:6px;cursor:pointer';
+  x.onclick=()=>b.remove();
+  grp.appendChild(btn); grp.appendChild(x);
+  b.appendChild(s); b.appendChild(grp);
+  host.parentNode.insertBefore(b, host);
+}
+function restoreAutosave(){
+  let raw=null; try{ raw=localStorage.getItem(AUTOSAVE_KEY); }catch(e){}
+  if(raw){ try{ const d=JSON.parse(raw);
+    const n=d&&d.model?((d.model.objects||[]).length+(d.model.events||[]).length+(d.model.agents||[]).length+(d.model.rights||[]).length):0;
+    if(n>0 && _modelEmpty()){
+      Object.assign(model,{objects:[],events:[],agents:[],rights:[],relationships:[]},d.model);
+      lidCounter=d.lidCounter||1;
+      try{ renderForm(); renderModel(); renderOutput(); showRestoreBanner(d.ts||Date.now()); }
+      catch(re){ console.warn('rascunho recuperado incompatível; descartando', re); _autosaveReady=true; clearScreen(false); return; }
+    }
+  }catch(e){} }
+  _autosaveReady=true;   /* a partir daqui as mudanças passam a ser salvas automaticamente */
+}
 function renderOutput(){
+  scheduleAutosave();
   document.getElementById('xmlOut').innerHTML=highlight(buildXML(currentProfile));
   const result=validate(currentProfile);
   const hasContent=model.objects.length||model.events.length||model.agents.length||model.rights.length;
@@ -3262,10 +3308,12 @@ function bind(){
   document.getElementById('btnVerify').onclick=()=>verifyIntegrity();
   document.getElementById('btnState').onclick=()=>{if(currentEnt==='object')syncObj();else if(currentEnt==='event')syncEvt();else if(currentEnt==='rights')syncRgt();else syncAgt();download('metapremis-trabalho.json',JSON.stringify({model,lidCounter},null,2),'application/json');};
   document.getElementById('btnLoad').onclick=()=>document.getElementById('stateFile').click();
+  document.getElementById('btnClear').onclick=()=>{ if(clearScreen(true)) toast('Tela limpa.'); };
   document.getElementById('stateFile').onchange=ev=>{const f=ev.target.files[0];if(!f){return;}const filled=model.objects.length||model.events.length||model.agents.length||model.rights.length;if(filled&&!confirm('Abrir um trabalho substitui tudo que está na tela pelo arquivo. Continuar?')){ev.target.value='';return;}const r=new FileReader();r.onload=e=>{try{const data=JSON.parse(e.target.result);if(!data||!data.model)throw new Error('sem bloco "model" — não parece um arquivo de trabalho do MetaPREMIS');Object.assign(model,{objects:[],events:[],agents:[],rights:[],relationships:[]},data.model);lidCounter=data.lidCounter||1;editing.object=editing.event=editing.agent=editing.rights=null;objDraft=mk.object();evtDraft=mk.event();agtDraft=mk.agent();rgtDraft=null;renderForm();renderModel();renderOutput();}catch(err){alert('Arquivo inválido: '+err.message);}finally{ev.target.value='';}};r.readAsText(f);};
 }
 
-bind(); applyTheme(document.documentElement.getAttribute('data-theme')||'light'); renderSteps(); renderForm(); renderModel(); renderOutput();
+bind(); applyTheme(document.documentElement.getAttribute('data-theme')||'light'); renderSteps(); renderForm(); renderModel(); renderOutput(); restoreAutosave();
+window.addEventListener('beforeunload', autosaveNow);   /* salva o estado mais recente ao sair/refresh */
 </script>
 <script type="module">
 /* =================================================================
