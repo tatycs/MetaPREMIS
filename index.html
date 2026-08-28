@@ -2087,8 +2087,16 @@ function highlight(xml){return esc(xml).replace(/(&lt;\?[\s\S]*?\?&gt;)/g,'<span
 /* ---- autosave no navegador (localStorage): sobrevive a refresh / fechar sem querer ---- */
 const AUTOSAVE_KEY='metapremis-autosave';
 let _autosaveT=null, _autosaveReady=false;
-function autosaveNow(){ try{ if(model.objects.length||model.events.length||model.agents.length||model.rights.length) localStorage.setItem(AUTOSAVE_KEY, JSON.stringify({model,lidCounter,ts:Date.now()})); else localStorage.removeItem(AUTOSAVE_KEY); }catch(e){} }
-function scheduleAutosave(){ if(!_autosaveReady||_autosaveT) return; _autosaveT=setTimeout(()=>{_autosaveT=null;autosaveNow();},400); }
+function _draftDirty(dr, factory){ if(!dr) return false; const t=factory(); t.lid=dr.lid; return JSON.stringify(dr)!==JSON.stringify(t); }
+function _anyDraftDirty(dr){ if(!dr) return false; return _draftDirty(dr.obj,mk.object)||_draftDirty(dr.evt,mk.event)||_draftDirty(dr.agt,mk.agent)||_draftDirty(dr.rgt,mk.right); }
+function _snapshot(){ return { model, lidCounter, ts:Date.now(), ui:{ currentEnt, inputMode, editing:{object:editing.object||null,event:editing.event||null,agent:editing.agent||null,rights:editing.rights||null}, drafts:{ obj:objDraft, evt:evtDraft, agt:agtDraft, rgt:rgtDraft } } }; }
+function autosaveNow(){ try{
+  if(inputMode==='form'){ try{ curSync(); }catch(e){} }   /* captura o que está digitado no formulário aberto */
+  const drafts={obj:objDraft,evt:evtDraft,agt:agtDraft,rgt:rgtDraft};
+  if(!_modelEmpty() || _anyDraftDirty(drafts)) localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(_snapshot()));
+  else localStorage.removeItem(AUTOSAVE_KEY);
+}catch(e){} }
+function scheduleAutosave(){ if(!_autosaveReady||_autosaveT) return; _autosaveT=setTimeout(()=>{_autosaveT=null;autosaveNow();},600); }
 function clearAutosave(){ try{ localStorage.removeItem(AUTOSAVE_KEY); }catch(e){} }
 function _modelEmpty(){ return !(model.objects.length||model.events.length||model.agents.length||model.rights.length); }
 function fmtAgo(ts){ const s=Math.max(0,Math.round((Date.now()-ts)/1000)); if(s<60)return 'há instantes'; const m=Math.round(s/60); if(m<60)return `há ${m} min`; const h=Math.round(m/60); if(h<24)return `há ${h} h`; return `há ${Math.round(h/24)} dia(s)`; }
@@ -2119,9 +2127,16 @@ function restoreAutosave(){
   let raw=null; try{ raw=localStorage.getItem(AUTOSAVE_KEY); }catch(e){}
   if(raw){ try{ const d=JSON.parse(raw);
     const n=d&&d.model?((d.model.objects||[]).length+(d.model.events||[]).length+(d.model.agents||[]).length+(d.model.rights||[]).length):0;
-    if(n>0 && _modelEmpty()){
-      Object.assign(model,{objects:[],events:[],agents:[],rights:[],relationships:[]},d.model);
+    const savedDrafts=(d.ui&&d.ui.drafts)||null;
+    if((n>0 || _anyDraftDirty(savedDrafts)) && _modelEmpty()){
+      Object.assign(model,{objects:[],events:[],agents:[],rights:[],relationships:[]},d.model||{});
       lidCounter=d.lidCounter||1;
+      if(d.ui){
+        currentEnt=d.ui.currentEnt||currentEnt; inputMode='form';   /* rascunhos são dados de formulário; abre no modo formulário */
+        if(d.ui.editing){ editing.object=d.ui.editing.object||null; editing.event=d.ui.editing.event||null; editing.agent=d.ui.editing.agent||null; editing.rights=d.ui.editing.rights||null; }
+        if(savedDrafts){ objDraft=savedDrafts.obj||mk.object(); evtDraft=savedDrafts.evt||mk.event(); agtDraft=savedDrafts.agt||mk.agent(); rgtDraft=savedDrafts.rgt||null; }
+        document.querySelectorAll('#entTabs button[data-ent]').forEach(b=>b.classList.toggle('on', b.dataset.ent===currentEnt));
+      }
       try{ renderForm(); renderModel(); renderOutput(); showRestoreBanner(d.ts||Date.now()); }
       catch(re){ console.warn('rascunho recuperado incompatível; descartando', re); _autosaveReady=true; clearScreen(false); return; }
     }
@@ -3279,6 +3294,7 @@ function bind(){
   document.getElementById('modeImport').onclick=()=>setMode('import');
   document.getElementById('modeExtract').onclick=()=>setMode('extract');
   STEPS.forEach(s=>{ const b=document.getElementById('step-'+s); if(b) b.onclick=()=>toggleStep(s); });
+  const fh=document.getElementById('formHost'); if(fh){ const onEdit=()=>{ if(inputMode==='form') scheduleAutosave(); }; fh.addEventListener('input',onEdit); fh.addEventListener('change',onEdit); }
   initSplitters();
   const stepperEl=document.getElementById('stepper');
   if(stepperEl) stepperEl.addEventListener('keydown', ev=>{
