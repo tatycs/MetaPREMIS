@@ -945,6 +945,11 @@ function validate(profile){
       const hasFile = (e.linkObjects||[]).some(lo=>{const o=model.objects.find(x=>x.lid===lo.objectLid); return o&&normv(o.objType)==='file';}) || model.objects.some(o=>normv(o.objType)==='file'&&(o.linkEvents||[]).includes(e.lid));
       if(!hasAgent) add('bad','Archivematica',`${ref}: sem agente vinculado — o Archivematica descarta o evento e a ingestão falha (todo evento precisa de ao menos um agente).`);
       if(!hasFile) add('bad','Archivematica',`${ref}: sem arquivo (object file) vinculado — o Archivematica descarta o evento e a ingestão falha (todo evento precisa de ao menos um arquivo em objects/).`);
+      /* AM (print_events_related_to_nonexistent_files → FAILURE): o Archivematica só coleta
+         object[@xsi:type=file]; um linkingObjectIdentifier de evento apontando para um objeto
+         que NÃO é file (IE/representation/bitstream) é tratado como referência a objeto inexistente. */
+      const nonFile=[]; (e.linkObjects||[]).forEach(lo=>{ const o=model.objects.find(x=>x.lid===lo.objectLid); if(o && normv(o.objType)!=='file'){ const tag=`${oId(o)} (${o.objType})`; if(nonFile.indexOf(tag)<0) nonFile.push(tag); } });
+      if(nonFile.length) add('bad','Archivematica',`${ref}: linkingObjectIdentifier aponta para ${nonFile.join(', ')} — não são object file. O Archivematica só reconhece objetos xsi:type=file e trata isso como referência a objeto inexistente; a ingestão falha. Nos eventos, vincule apenas a arquivos (file), não ao IE/representation.`);
     }
   });
   model.agents.forEach(a=>{
