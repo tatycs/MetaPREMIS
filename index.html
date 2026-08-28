@@ -1430,17 +1430,25 @@ function relTypeChanged(i){
     s.innerHTML=vopt(subs,cur); const so=document.getElementById('rel_s_'+i+'_o'); const other=has(cur)&&subs.indexOf(cur)<0; if(so){ so.style.display=other?'':'none'; if(!other) so.value=''; } }
   syncObj();
 }
-/* recíproco automático: para cada relação com recíproco, garante o inverso no objeto-alvo */
-function applyReciprocals(){
-  let added=0;
+/* recíproco automático DERIVADO: as recíprocas criadas pelo app ficam marcadas com auto:true.
+   A cada salvamento elas são apagadas e regeradas a partir das relações "à mão" — assim,
+   corrigir ou remover uma relação atualiza/limpa a inversa no objeto-alvo (não deixa recíproca presa).
+   Recíprocas que a pessoa escreveu à mão (ou vindas de import) não têm auto:true e são preservadas. */
+function countAutoRecip(){ let n=0; model.objects.forEach(o=>(o.relationships||[]).forEach(r=>{ if(r.auto) n+=(r.relObjects||[]).length; })); return n; }
+function reconcileReciprocals(){
+  model.objects.forEach(o=>{ o.relationships=(o.relationships||[]).filter(r=>!r.auto); });   /* remove recíprocas automáticas antigas */
   model.objects.forEach(o=>{ (o.relationships||[]).forEach(rel=>{
+    if(rel.auto) return;
     const rec=RECIP[normv(rel.subType)]; if(!rec) return;
     (rel.relObjects||[]).forEach(tLid=>{ if(tLid===o.lid) return; const t=model.objects.find(x=>x.lid===tLid); if(!t) return;
-      const dup=(t.relationships||[]).some(r2=>normv(r2.subType)===normv(rec)&&(r2.relObjects||[]).includes(o.lid));
-      if(!dup){ const nr=mk.relationship(); nr.type=rel.type; nr.subType=rec; nr.relObjects=[o.lid]; t.relationships=t.relationships||[]; t.relationships.push(nr); added++; }
+      t.relationships=t.relationships||[];
+      const manual=t.relationships.some(r2=>!r2.auto&&normv(r2.subType)===normv(rec)&&(r2.relObjects||[]).includes(o.lid));
+      if(manual) return;   /* já existe a inversa à mão: não duplica */
+      let auto=t.relationships.find(r2=>r2.auto&&normv(r2.subType)===normv(rec)&&normv(r2.type)===normv(rel.type));
+      if(auto){ if(!auto.relObjects.includes(o.lid)) auto.relObjects.push(o.lid); }
+      else { const nr=mk.relationship(); nr.type=rel.type; nr.subType=rec; nr.relObjects=[o.lid]; nr.auto=true; t.relationships.push(nr); }
     });
   }); });
-  return added;
 }
 function renderObjectForm(){
   const o = objDraft;
@@ -1676,7 +1684,7 @@ function addFmtNote(ci,mi){ syncObj(); const f=objDraft.characteristics[ci].form
 function rmFmtNote(ci,mi,ni){ syncObj(); objDraft.characteristics[ci].formats[mi].notes.splice(ni,1); renderForm(); }
 function rmSub(ci,coll,i){ syncObj(); objDraft.characteristics[ci][coll].splice(i,1); renderForm(); }
 function toast(msg){ let t=document.getElementById('toast'); if(!t){ t=document.createElement('div'); t.id='toast'; document.body.appendChild(t); } t.textContent=msg; t.classList.add('show'); clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),3800); }
-function commitObject(){ syncObj(); const c=JSON.parse(JSON.stringify(objDraft)); if(editing.object){ const i=model.objects.findIndex(o=>o.lid===editing.object); if(i>=0)model.objects[i]=c; else model.objects.push(c); editing.object=null; } else model.objects.push(c); objDraft = mk.object(); const nRec=applyReciprocals(); renderForm(); renderModel(); renderOutput(); if(nRec) toast(nRec+' relação recíproca criada automaticamente no(s) objeto(s)-alvo.'); }
+function commitObject(){ syncObj(); const c=JSON.parse(JSON.stringify(objDraft)); if(editing.object){ const i=model.objects.findIndex(o=>o.lid===editing.object); if(i>=0)model.objects[i]=c; else model.objects.push(c); editing.object=null; } else model.objects.push(c); objDraft = mk.object(); const _b=countAutoRecip(); reconcileReciprocals(); const _delta=countAutoRecip()-_b; renderForm(); renderModel(); renderOutput(); if(_delta>0) toast(_delta+' relação recíproca criada automaticamente no(s) objeto(s)-alvo.'); }
 
 /* ====================== EVENT ====================== */
 function renderEventForm(){
@@ -2042,6 +2050,7 @@ function removeEnt(coll,lid){
   const type={objects:'object',events:'event',agents:'agent',rights:'rights'}[coll];
   if(editing[type]===lid){ editing[type]=null; if(type==='object')objDraft=mk.object(); else if(type==='event')evtDraft=mk.event(); else if(type==='agent')agtDraft=mk.agent(); else rgtDraft=mk.right(); }
   model[coll]=model[coll].filter(x=>x.lid!==lid);
+  if(coll==='objects') reconcileReciprocals();   /* limpa recíprocas automáticas que apontavam para o objeto removido */
   renderForm();renderModel();renderOutput();
 }
 function editEnt(coll,lid){
