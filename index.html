@@ -1037,32 +1037,34 @@ function validate(profile){
     rights: id=>model.rights.some(x=>x.lid===id),
   };
   const orphan = (ref,kind,id)=> add('bad','dd',`${ref}: vínculo a ${kind} inexistente (${id}) — órfão. Todo vínculo deve apontar para uma entidade do documento (R2.3).`);
+  /* alvo removido (vínculo por id interno, sem valor de identificador a mostrar): mensagem sem código interno */
+  const orphanGone = (ref,kindLabel)=> add('bad','dd',`${ref}: aponta para um ${kindLabel} que não está no documento (o ${kindLabel} foi removido). Abra esta entidade em "editar" e salve para limpar o vínculo, ou recrie o ${kindLabel}.`);
   /* rótulos por VALOR do identificador do XML (não por id interno), para o vínculo ser localizável */
   const lblEvent=lid=>{ const e=model.events.find(x=>x.lid===lid); return e?(e.idValue||lid):lid; };
   const lblRights=lid=>{ const r=model.rights.find(x=>x.lid===lid); return r?(r.idValue||lid):lid; };
   const lblObject=lid=>{ const o=model.objects.find(x=>x.lid===lid); return o?oId(o):lid; };
   const lblAgent=lid=>{ const a=model.agents.find(x=>x.lid===lid); return a?aId(a):lid; };
   model.objects.forEach(o=>{
-    (o.linkEvents||[]).forEach(id=>{ if(!exists.event(id)) orphan(`objeto "${oId(o)}"/linkingEventIdentifier`,'event',lblEvent(id)); });
-    (o.linkRights||[]).forEach(id=>{ if(!exists.rights(id)) orphan(`objeto "${oId(o)}"/linkingRightsStatementIdentifier`,'rights',lblRights(id)); });
+    (o.linkEvents||[]).forEach(id=>{ if(!exists.event(id)) orphanGone(`objeto "${oId(o)}"/linkingEventIdentifier`,'evento'); });
+    (o.linkRights||[]).forEach(id=>{ if(!exists.rights(id)) orphanGone(`objeto "${oId(o)}"/linkingRightsStatementIdentifier`,'direito'); });
     (o.relationships||[]).forEach((rel,ri)=>{
       const ref=`objeto "${oId(o)}"/relationship[${ri+1}]`;
-      (rel.relObjects||[]).forEach(id=>{ if(!exists.object(id)) orphan(`${ref}/relatedObjectIdentifier`,'object',lblObject(id)); });
-      (rel.relEvents||[]).forEach(id=>{ if(!exists.event(id)) orphan(`${ref}/relatedEventIdentifier`,'event',lblEvent(id)); });
+      (rel.relObjects||[]).forEach(id=>{ if(!exists.object(id)) orphanGone(`${ref}/relatedObjectIdentifier`,'objeto'); });
+      (rel.relEvents||[]).forEach(id=>{ if(!exists.event(id)) orphanGone(`${ref}/relatedEventIdentifier`,'evento'); });
     });
   });
   model.events.forEach(e=>{
     const eref=`evento "${e.idValue||e.lid}"`;
-    (e.linkAgents||[]).forEach(la=>{ if(la&&!(la.agentLid&&exists.agent(la.agentLid))) orphan(`${eref}/linkingAgentIdentifier`,'agent',la.refValue||lblAgent(la.agentLid)||'?'); });
-    (e.linkObjects||[]).forEach(lo=>{ if(lo&&!(lo.objectLid&&exists.object(lo.objectLid))) orphan(`${eref}/linkingObjectIdentifier`,'object',lo.refValue||lblObject(lo.objectLid)||'?'); });
+    (e.linkAgents||[]).forEach(la=>{ if(la&&!(la.agentLid&&exists.agent(la.agentLid))){ if(has(la.refValue)) orphan(`${eref}/linkingAgentIdentifier`,'agent',la.refValue); else orphanGone(`${eref}/linkingAgentIdentifier`,'agente'); } });
+    (e.linkObjects||[]).forEach(lo=>{ if(lo&&!(lo.objectLid&&exists.object(lo.objectLid))){ if(has(lo.refValue)) orphan(`${eref}/linkingObjectIdentifier`,'object',lo.refValue); else orphanGone(`${eref}/linkingObjectIdentifier`,'objeto'); } });
   });
   model.agents.forEach(a=>{
-    (a.linkEvents||[]).forEach(id=>{ if(!exists.event(id)) orphan(`agente "${aId(a)}"/linkingEventIdentifier`,'event',lblEvent(id)); });
-    (a.linkRights||[]).forEach(id=>{ if(!exists.rights(id)) orphan(`agente "${aId(a)}"/linkingRightsStatementIdentifier`,'rights',lblRights(id)); });
+    (a.linkEvents||[]).forEach(id=>{ if(!exists.event(id)) orphanGone(`agente "${aId(a)}"/linkingEventIdentifier`,'evento'); });
+    (a.linkRights||[]).forEach(id=>{ if(!exists.rights(id)) orphanGone(`agente "${aId(a)}"/linkingRightsStatementIdentifier`,'direito'); });
   });
   model.rights.forEach(r=>{
-    (r.linkObjects||[]).forEach(id=>{ if(!exists.object(id)) orphan(`direito "${r.idValue||r.lid}"/linkingObjectIdentifier`,'object',lblObject(id)); });
-    (r.linkAgents||[]).forEach(id=>{ if(!exists.agent(id)) orphan(`direito "${r.idValue||r.lid}"/linkingAgentIdentifier`,'agent',lblAgent(id)); });
+    (r.linkObjects||[]).forEach(id=>{ if(!exists.object(id)) orphanGone(`direito "${r.idValue||r.lid}"/linkingObjectIdentifier`,'objeto'); });
+    (r.linkAgents||[]).forEach(id=>{ if(!exists.agent(id)) orphanGone(`direito "${r.idValue||r.lid}"/linkingAgentIdentifier`,'agente'); });
   });
 
   /* R2.1 — unicidade de identificadores: o par (type,value) deve ser único dentro de
@@ -2193,6 +2195,21 @@ function scheduleAutosave(){ if(!_autosaveReady||_autosaveT) return; _autosaveT=
 function clearAutosave(){ try{ localStorage.removeItem(AUTOSAVE_KEY); }catch(e){} }
 function _modelEmpty(){ return !(model.objects.length||model.events.length||model.agents.length||model.rights.length); }
 function fmtAgo(ts){ const s=Math.max(0,Math.round((Date.now()-ts)/1000)); if(s<60)return 'há instantes'; const m=Math.round(s/60); if(m<60)return `há ${m} min`; const h=Math.round(m/60); if(h<24)return `há ${h} h`; return `há ${Math.round(h/24)} dia(s)`; }
+/* remove vínculos que apontam para entidades que não existem mais no modelo (alvo removido).
+   Usado ao abrir um trabalho, para não trazer vínculos órfãos com códigos internos. Retorna quantos foram removidos. */
+function pruneDanglingLinks(){
+  const oset=new Set(model.objects.map(o=>o.lid)), eset=new Set(model.events.map(e=>e.lid)), aset=new Set(model.agents.map(a=>a.lid)), rset=new Set(model.rights.map(r=>r.lid));
+  let n=0; const keep=(arr,pred)=>{ if(!arr) return arr; const before=arr.length; const out=arr.filter(pred); n+=before-out.length; return out; };
+  model.objects.forEach(o=>{
+    o.linkEvents=keep(o.linkEvents,x=>eset.has(x));
+    o.linkRights=keep(o.linkRights,x=>rset.has(x));
+    (o.relationships||[]).forEach(rel=>{ rel.relObjects=keep(rel.relObjects,x=>oset.has(x)); rel.relEvents=keep(rel.relEvents,x=>eset.has(x)); });
+  });
+  model.events.forEach(e=>{ e.linkAgents=keep(e.linkAgents,l=>l&&l.agentLid&&aset.has(l.agentLid)); e.linkObjects=keep(e.linkObjects,l=>l&&l.objectLid&&oset.has(l.objectLid)); });
+  model.agents.forEach(a=>{ a.linkEvents=keep(a.linkEvents,x=>eset.has(x)); a.linkRights=keep(a.linkRights,x=>rset.has(x)); });
+  model.rights.forEach(r=>{ r.linkObjects=keep(r.linkObjects,x=>oset.has(x)); r.linkAgents=keep(r.linkAgents,x=>aset.has(x)); });
+  return n;
+}
 function clearScreen(ask){
   if(ask && !_modelEmpty() && !confirm('Limpar tela apaga tudo do modelo e o rascunho salvo no navegador. Isso não pode ser desfeito. Continuar?')) return false;
   Object.assign(model,{objects:[],events:[],agents:[],rights:[],relationships:[]});
@@ -3505,7 +3522,7 @@ function bind(){
   document.getElementById('btnState').onclick=()=>{if(currentEnt==='object')syncObj();else if(currentEnt==='event')syncEvt();else if(currentEnt==='rights')syncRgt();else syncAgt();download('metapremis-trabalho.json',JSON.stringify({model,lidCounter},null,2),'application/json');};
   document.getElementById('btnLoad').onclick=()=>document.getElementById('stateFile').click();
   document.getElementById('btnClear').onclick=()=>{ if(clearScreen(true)) toast('Tela limpa.'); };
-  document.getElementById('stateFile').onchange=ev=>{const f=ev.target.files[0];if(!f){return;}const filled=model.objects.length||model.events.length||model.agents.length||model.rights.length;if(filled&&!confirm('Abrir um trabalho substitui tudo que está na tela pelo arquivo. Continuar?')){ev.target.value='';return;}const r=new FileReader();r.onload=e=>{try{const data=JSON.parse(e.target.result);if(!data||!data.model)throw new Error('sem bloco "model" — não parece um arquivo de trabalho do MetaPREMIS');Object.assign(model,{objects:[],events:[],agents:[],rights:[],relationships:[]},data.model);lidCounter=data.lidCounter||1;editing.object=editing.event=editing.agent=editing.rights=null;objDraft=mk.object();evtDraft=mk.event();agtDraft=mk.agent();rgtDraft=null;renderForm();renderModel();renderOutput();}catch(err){alert('Arquivo inválido: '+err.message);}finally{ev.target.value='';}};r.readAsText(f);};
+  document.getElementById('stateFile').onchange=ev=>{const f=ev.target.files[0];if(!f){return;}const filled=model.objects.length||model.events.length||model.agents.length||model.rights.length;if(filled&&!confirm('Abrir um trabalho substitui tudo que está na tela pelo arquivo. Continuar?')){ev.target.value='';return;}const r=new FileReader();r.onload=e=>{try{const data=JSON.parse(e.target.result);if(!data||!data.model)throw new Error('sem bloco "model" — não parece um arquivo de trabalho do MetaPREMIS');Object.assign(model,{objects:[],events:[],agents:[],rights:[],relationships:[]},data.model);lidCounter=data.lidCounter||1;editing.object=editing.event=editing.agent=editing.rights=null;objDraft=mk.object();evtDraft=mk.event();agtDraft=mk.agent();rgtDraft=null;const _pruned=pruneDanglingLinks();renderForm();renderModel();renderOutput();if(_pruned)toast(_pruned+' vínculo(s) órfão(s) removido(s) ao abrir o trabalho (apontavam para entidades já excluídas).');}catch(err){alert('Arquivo inválido: '+err.message);}finally{ev.target.value='';}};r.readAsText(f);};
 }
 
 bind(); applyTheme(document.documentElement.getAttribute('data-theme')||'light'); renderSteps(); renderForm(); renderModel(); renderOutput(); restoreAutosave();
