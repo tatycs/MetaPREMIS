@@ -2156,7 +2156,7 @@ function renderModel(){
     n=(r.linkAgents||[]).filter(x=>!exA.has(x)).length; if(n)p.push(n+' agente(s)');
     pushBrk('rights',r.lid,_vRgt(r),p); });
   if(brk.length){
-    const items=brk.map(b=>leaf(`<span class="tico">⚠</span><span class="cid">${b.label}</span> <span class="tedge bad">vínculo(s) órfão(s): ${esc(b.txt)}</span><button class="tbtn-ed" title="editar (salvar limpa os vínculos órfãos)" aria-label="editar" onclick="editEnt('${b.coll}','${b.lid}')">✎</button>`)).join('');
+    const items=brk.map(b=>leaf(`<span class="tico">⚠</span><span class="cid">${b.label}</span> <span class="tedge bad">vínculo(s) órfão(s): ${esc(b.txt)}</span><button class="tbtn-ed" title="editar" aria-label="editar" onclick="editEnt('${b.coll}','${b.lid}')">✎</button><button class="tbtn-x" title="remover os vínculos órfãos desta entidade" aria-label="remover vínculos órfãos" onclick="clearOrphanLinks('${b.coll}','${b.lid}')">×</button>`)).join('');
     html+=`<div class="model-group"><div class="gh"><span>vínculos órfãos — alvo removido</span><span>${brk.length}</span></div><div class="tree">${items}</div></div>`;
   }
   host.innerHTML=html;
@@ -2221,6 +2221,72 @@ function _modelEmpty(){ return !(model.objects.length||model.events.length||mode
 function fmtAgo(ts){ const s=Math.max(0,Math.round((Date.now()-ts)/1000)); if(s<60)return 'há instantes'; const m=Math.round(s/60); if(m<60)return `há ${m} min`; const h=Math.round(m/60); if(h<24)return `há ${h} h`; return `há ${Math.round(h/24)} dia(s)`; }
 /* remove vínculos que apontam para entidades que não existem mais no modelo (alvo removido).
    Usado ao abrir um trabalho, para não trazer vínculos órfãos com códigos internos. Retorna quantos foram removidos. */
+/* ===== Trabalho (JSON) com vínculos por VALOR do identificador (type+value), estável entre sessões ===== */
+const _WK=(t,v)=>`${t||''}${v}`;                 /* chave de resolução por valor */
+const _wkey=rf=> rf.v!=null ? ('v'+(rf.t||'')+''+rf.v) : ('l'+(rf.lid||''));
+function _refObj(lid){ const o=model.objects.find(x=>x.lid===lid); if(!o) return {lid}; const id=o.identifiers&&o.identifiers[0]; return (id&&has(id.value))?{t:id.type||'',v:id.value}:{lid}; }
+function _refEvt(lid){ const e=model.events.find(x=>x.lid===lid); if(!e) return {lid}; return has(e.idValue)?{t:e.idType||'',v:e.idValue}:{lid}; }
+function _refAgt(lid){ const a=model.agents.find(x=>x.lid===lid); if(!a) return {lid}; const id=a.identifiers&&a.identifiers[0]; return (id&&has(id.value))?{t:id.type||'',v:id.value}:{lid}; }
+function _refRgt(lid){ const r=model.rights.find(x=>x.lid===lid); if(!r) return {lid}; return has(r.idValue)?{t:r.idType||'',v:r.idValue}:{lid}; }
+function serializeWork(){
+  const clone=o=>JSON.parse(JSON.stringify(o));
+  const M={objects:[],events:[],agents:[],rights:[]};
+  model.objects.forEach(o=>{ const c=clone(o);
+    c.linkEvents=(o.linkEvents||[]).map(_refEvt);
+    c.linkRights=(o.linkRights||[]).map(_refRgt);
+    (c.relationships||[]).forEach((rel,ri)=>{ const orel=o.relationships[ri]; const so={},se={};
+      rel.relObjects=(orel.relObjects||[]).map(lid=>{ const rf=_refObj(lid); const s=(orel.relObjSeq||{})[lid]; if(has(s)) so[_wkey(rf)]=s; return rf; });
+      rel.relEvents=(orel.relEvents||[]).map(lid=>{ const rf=_refEvt(lid); const s=(orel.relEvtSeq||{})[lid]; if(has(s)) se[_wkey(rf)]=s; return rf; });
+      rel.relObjSeqRef=so; rel.relEvtSeqRef=se; delete rel.relObjSeq; delete rel.relEvtSeq; });
+    M.objects.push(c); });
+  model.events.forEach(e=>{ const c=clone(e);
+    c.linkAgents=(e.linkAgents||[]).map(la=>{ let rf=la.agentLid?_refAgt(la.agentLid):{}; if(rf.v==null&&has(la.refValue)) rf={t:la.refType||'',v:la.refValue}; return {...rf, role:la.role||''}; });
+    c.linkObjects=(e.linkObjects||[]).map(lo=>{ let rf=lo.objectLid?_refObj(lo.objectLid):{}; if(rf.v==null&&has(lo.refValue)) rf={t:lo.refType||'',v:lo.refValue}; return {...rf, role:lo.role||''}; });
+    M.events.push(c); });
+  model.agents.forEach(a=>{ const c=clone(a); c.linkEvents=(a.linkEvents||[]).map(_refEvt); c.linkRights=(a.linkRights||[]).map(_refRgt); M.agents.push(c); });
+  model.rights.forEach(r=>{ const c=clone(r); c.linkObjects=(r.linkObjects||[]).map(_refObj); c.linkAgents=(r.linkAgents||[]).map(_refAgt); M.rights.push(c); });
+  return {format:'metapremis-work', version:2, savedAt:new Date().toISOString(), lidCounter, model:M};
+}
+function deserializeWork(data){
+  const M=data.model;
+  const oMap=new Map(),eMap=new Map(),aMap=new Map(),rMap=new Map();
+  (M.objects||[]).forEach(o=>(o.identifiers||[]).forEach(id=>{ if(has(id.type)&&has(id.value)) oMap.set(_WK(id.type,id.value),o.lid); }));
+  (M.events||[]).forEach(e=>{ if(has(e.idType)&&has(e.idValue)) eMap.set(_WK(e.idType,e.idValue),e.lid); });
+  (M.agents||[]).forEach(a=>(a.identifiers||[]).forEach(id=>{ if(has(id.type)&&has(id.value)) aMap.set(_WK(id.type,id.value),a.lid); }));
+  (M.rights||[]).forEach(r=>{ if(has(r.idType)&&has(r.idValue)) rMap.set(_WK(r.idType,r.idValue),r.lid); });
+  const oL=new Set((M.objects||[]).map(o=>o.lid)), eL=new Set((M.events||[]).map(e=>e.lid)), aL=new Set((M.agents||[]).map(a=>a.lid)), rL=new Set((M.rights||[]).map(r=>r.lid));
+  const dropped=[];
+  const res=(map,lset,rf,label)=>{ if(!rf) return null; if(rf.v!=null){ const l=map.get(_WK(rf.t,rf.v)); if(l) return l; dropped.push(`${label} → ${rf.v}`); return null; } if(rf.lid&&lset.has(rf.lid)) return rf.lid; if(rf.lid) dropped.push(`${label} → (removido)`); return null; };
+  (M.objects||[]).forEach(o=>{
+    o.linkEvents=(o.linkEvents||[]).map(rf=>res(eMap,eL,rf,`objeto "${(o.identifiers&&o.identifiers[0]||{}).value||o.lid}"→evento`)).filter(Boolean);
+    o.linkRights=(o.linkRights||[]).map(rf=>res(rMap,rL,rf,'objeto→direito')).filter(Boolean);
+    (o.relationships||[]).forEach(rel=>{ const so={},se={};
+      rel.relObjects=(rel.relObjects||[]).map(rf=>{ const l=res(oMap,oL,rf,'relatedObject'); if(l){ const s=(rel.relObjSeqRef||{})[_wkey(rf)]; if(has(s)) so[l]=s; } return l; }).filter(Boolean);
+      rel.relEvents=(rel.relEvents||[]).map(rf=>{ const l=res(eMap,eL,rf,'relatedEvent'); if(l){ const s=(rel.relEvtSeqRef||{})[_wkey(rf)]; if(has(s)) se[l]=s; } return l; }).filter(Boolean);
+      rel.relObjSeq=so; rel.relEvtSeq=se; delete rel.relObjSeqRef; delete rel.relEvtSeqRef; });
+  });
+  (M.events||[]).forEach(e=>{
+    e.linkAgents=(e.linkAgents||[]).map(rf=>{ const l=rf.v!=null?aMap.get(_WK(rf.t,rf.v)):(rf.lid&&aL.has(rf.lid)?rf.lid:null); if(l) return {agentLid:l,role:rf.role||''}; if(rf.v!=null||rf.lid) return {agentLid:null,refType:rf.t||'',refValue:rf.v||'',role:rf.role||''}; return null; }).filter(Boolean);
+    e.linkObjects=(e.linkObjects||[]).map(rf=>{ const l=rf.v!=null?oMap.get(_WK(rf.t,rf.v)):(rf.lid&&oL.has(rf.lid)?rf.lid:null); if(l) return {objectLid:l,role:rf.role||''}; if(rf.v!=null||rf.lid) return {objectLid:null,refType:rf.t||'',refValue:rf.v||'',role:rf.role||''}; return null; }).filter(Boolean);
+  });
+  (M.agents||[]).forEach(a=>{ a.linkEvents=(a.linkEvents||[]).map(rf=>res(eMap,eL,rf,'agente→evento')).filter(Boolean); a.linkRights=(a.linkRights||[]).map(rf=>res(rMap,rL,rf,'agente→direito')).filter(Boolean); });
+  (M.rights||[]).forEach(r=>{ r.linkObjects=(r.linkObjects||[]).map(rf=>res(oMap,oL,rf,'direito→objeto')).filter(Boolean); r.linkAgents=(r.linkAgents||[]).map(rf=>res(aMap,aL,rf,'direito→agente')).filter(Boolean); });
+  Object.assign(model,{objects:M.objects||[],events:M.events||[],agents:M.agents||[],rights:M.rights||[],relationships:[]});
+  lidCounter=data.lidCounter||1;
+  return {dropped};
+}
+/* remove os vínculos órfãos (alvo removido) de UMA entidade específica */
+function clearOrphanLinks(coll,lid){
+  const exE=new Set(model.events.map(e=>e.lid)),exO=new Set(model.objects.map(o=>o.lid)),exA=new Set(model.agents.map(a=>a.lid)),exR=new Set(model.rights.map(r=>r.lid));
+  let n=0; const keep=(arr,pred)=>{ if(!arr) return arr; const b=arr.length; const o=arr.filter(pred); n+=b-o.length; return o; };
+  const ent=(model[coll]||[]).find(x=>x.lid===lid); if(!ent) return;
+  if(coll==='objects'){ ent.linkEvents=keep(ent.linkEvents,x=>exE.has(x)); ent.linkRights=keep(ent.linkRights,x=>exR.has(x)); (ent.relationships||[]).forEach(rel=>{ rel.relObjects=keep(rel.relObjects,x=>exO.has(x)); rel.relEvents=keep(rel.relEvents,x=>exE.has(x)); }); }
+  else if(coll==='events'){ ent.linkAgents=keep(ent.linkAgents,l=>(l&&l.agentLid&&exA.has(l.agentLid))||(l&&has(l.refValue))); ent.linkObjects=keep(ent.linkObjects,l=>(l&&l.objectLid&&exO.has(l.objectLid))||(l&&has(l.refValue))); }
+  else if(coll==='agents'){ ent.linkEvents=keep(ent.linkEvents,x=>exE.has(x)); ent.linkRights=keep(ent.linkRights,x=>exR.has(x)); }
+  else if(coll==='rights'){ ent.linkObjects=keep(ent.linkObjects,x=>exO.has(x)); ent.linkAgents=keep(ent.linkAgents,x=>exA.has(x)); }
+  renderForm(); renderModel(); renderOutput();
+  toast(n?`${n} vínculo(s) órfão(s) removido(s).`:'Nenhum vínculo órfão para remover.');
+}
 function pruneDanglingLinks(){
   const oset=new Set(model.objects.map(o=>o.lid)), eset=new Set(model.events.map(e=>e.lid)), aset=new Set(model.agents.map(a=>a.lid)), rset=new Set(model.rights.map(r=>r.lid));
   let n=0; const keep=(arr,pred)=>{ if(!arr) return arr; const before=arr.length; const out=arr.filter(pred); n+=before-out.length; return out; };
@@ -3543,10 +3609,10 @@ function bind(){
     /* senão: relatório mostrado nos painéis; download não acontece */
   };
   document.getElementById('btnVerify').onclick=()=>verifyIntegrity();
-  document.getElementById('btnState').onclick=()=>{if(currentEnt==='object')syncObj();else if(currentEnt==='event')syncEvt();else if(currentEnt==='rights')syncRgt();else syncAgt();download('metapremis-trabalho.json',JSON.stringify({model,lidCounter},null,2),'application/json');};
+  document.getElementById('btnState').onclick=()=>{if(currentEnt==='object')syncObj();else if(currentEnt==='event')syncEvt();else if(currentEnt==='rights')syncRgt();else syncAgt();download('metapremis-trabalho.json',JSON.stringify(serializeWork(),null,2),'application/json');};
   document.getElementById('btnLoad').onclick=()=>document.getElementById('stateFile').click();
   document.getElementById('btnClear').onclick=()=>{ if(clearScreen(true)) toast('Tela limpa.'); };
-  document.getElementById('stateFile').onchange=ev=>{const f=ev.target.files[0];if(!f){return;}const filled=model.objects.length||model.events.length||model.agents.length||model.rights.length;if(filled&&!confirm('Abrir um trabalho substitui tudo que está na tela pelo arquivo. Continuar?')){ev.target.value='';return;}const r=new FileReader();r.onload=e=>{try{const data=JSON.parse(e.target.result);if(!data||!data.model)throw new Error('sem bloco "model" — não parece um arquivo de trabalho do MetaPREMIS');Object.assign(model,{objects:[],events:[],agents:[],rights:[],relationships:[]},data.model);lidCounter=data.lidCounter||1;editing.object=editing.event=editing.agent=editing.rights=null;objDraft=mk.object();evtDraft=mk.event();agtDraft=mk.agent();rgtDraft=null;renderForm();renderModel();renderOutput();}catch(err){alert('Arquivo inválido: '+err.message);}finally{ev.target.value='';}};r.readAsText(f);};
+  document.getElementById('stateFile').onchange=ev=>{const f=ev.target.files[0];if(!f){return;}const filled=model.objects.length||model.events.length||model.agents.length||model.rights.length;if(filled&&!confirm('Abrir um trabalho substitui tudo que está na tela pelo arquivo. Continuar?')){ev.target.value='';return;}const r=new FileReader();r.onload=e=>{try{const data=JSON.parse(e.target.result);if(!data||!data.model)throw new Error('sem bloco "model" — não parece um arquivo de trabalho do MetaPREMIS');let _drop=[];if(data.format==='metapremis-work'){const res=deserializeWork(data);_drop=res.dropped||[];}else{Object.assign(model,{objects:[],events:[],agents:[],rights:[],relationships:[]},data.model);lidCounter=data.lidCounter||1;}editing.object=editing.event=editing.agent=editing.rights=null;objDraft=mk.object();evtDraft=mk.event();agtDraft=mk.agent();rgtDraft=null;renderForm();renderModel();renderOutput();if(_drop.length)toast(`${_drop.length} vínculo(s) não reconectado(s) — apontavam para entidades ausentes: ${_drop.slice(0,4).join('; ')}${_drop.length>4?'…':''}`);}catch(err){alert('Arquivo inválido: '+err.message);}finally{ev.target.value='';}};r.readAsText(f);};
 }
 
 bind(); applyTheme(document.documentElement.getAttribute('data-theme')||'light'); renderSteps(); renderForm(); renderModel(); renderOutput(); restoreAutosave();
