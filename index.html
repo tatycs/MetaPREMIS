@@ -370,6 +370,11 @@
 const model = { objects:[], events:[], agents:[], rights:[], relationships:[] };
 let lidCounter = 1;
 const newLid = (p)=> `${p}-${String(lidCounter++).padStart(3,'0')}`;
+/* rótulos visíveis: sempre o VALOR do identificador colocado pelo usuário (não o lid interno) */
+function _vObj(o){ return esc((o&&o.identifiers&&o.identifiers[0]&&o.identifiers[0].value)||(o&&o.lid)||''); }
+function _vAgt(a){ return esc((a&&a.identifiers&&a.identifiers[0]&&a.identifiers[0].value)||(a&&a.lid)||''); }
+function _vEvt(e){ return esc((e&&e.idValue)||(e&&e.lid)||''); }
+function _vRgt(r){ return esc((r&&r.idValue)||(r&&r.lid)||''); }
 
 const mk = {
   objectIdentifier: ()=>({type:'',value:''}),
@@ -1685,9 +1690,9 @@ function renderObjectForm(){
     h += `<div class="rep-item"><div class="rh"><span>relação ${i+1}</span><button class="rm-x" onclick="rmRep('relationships',${i})">×</button></div>
       <div class="field-row">${vsel('relationshipType','xsd',`rel_t_${i}`,rel.type,RELTYPES,'syncObj',true,'relationshipType',`relTypeChanged(${i})`)}${vsel('relationshipSubType','xsd',`rel_s_${i}`,rel.subType,RELSUB[normv(rel.type)]||[],'syncObj',true,'relationshipSubType')}</div>
       <label style="font-size:11px;font-weight:600">relatedObjectIdentifier<span class="req">*</span> [1..n] — objetos do modelo · seq = ordem ${helpIcon('relatedObjectSequence')}</label>
-      ${others.length? others.map(t=>`<div class="chk"><input type="checkbox" id="relo_${i}_${t.lid}" ${rel.relObjects.includes(t.lid)?'checked':''} onchange="syncObj()"><label style="font-weight:400;margin:0;flex:1" for="relo_${i}_${t.lid}">${t.lid} · ${esc(t.originalName||(t.identifiers[0]?t.identifiers[0].value:''))}</label><input type="number" min="1" class="seq-in" id="reloseq_${i}_${t.lid}" value="${esc(((rel.relObjSeq||{})[t.lid])||'')}" placeholder="seq" title="relatedObjectSequence — ordem" oninput="syncObj()"></div>`).join('') : '<div class="empty">Nenhum objeto no modelo ainda para relacionar.</div>'}
+      ${others.length? others.map(t=>`<div class="chk"><input type="checkbox" id="relo_${i}_${t.lid}" ${rel.relObjects.includes(t.lid)?'checked':''} onchange="syncObj()"><label style="font-weight:400;margin:0;flex:1" for="relo_${i}_${t.lid}">${_vObj(t)}${has(t.originalName)?' · '+esc(t.originalName):''}</label><input type="number" min="1" class="seq-in" id="reloseq_${i}_${t.lid}" value="${esc(((rel.relObjSeq||{})[t.lid])||'')}" placeholder="seq" title="relatedObjectSequence — ordem" oninput="syncObj()"></div>`).join('') : '<div class="empty">Nenhum objeto no modelo ainda para relacionar.</div>'}
       <label style="font-size:11px;font-weight:600;margin-top:6px">relatedEventIdentifier [0..n]</label>
-      ${model.events.length? model.events.map(e=>`<div class="chk"><input type="checkbox" id="rele_${i}_${e.lid}" ${rel.relEvents.includes(e.lid)?'checked':''} onchange="syncObj()"><label style="font-weight:400;margin:0;flex:1" for="rele_${i}_${e.lid}">${e.lid} · ${esc(e.eventType||e.idValue)}</label><input type="number" min="1" class="seq-in" id="releseq_${i}_${e.lid}" value="${esc(((rel.relEvtSeq||{})[e.lid])||'')}" placeholder="seq" title="relatedEventSequence — ordem" oninput="syncObj()"></div>`).join('') : '<div class="empty">Sem eventos no modelo.</div>'}
+      ${model.events.length? model.events.map(e=>`<div class="chk"><input type="checkbox" id="rele_${i}_${e.lid}" ${rel.relEvents.includes(e.lid)?'checked':''} onchange="syncObj()"><label style="font-weight:400;margin:0;flex:1" for="rele_${i}_${e.lid}">${_vEvt(e)}${has(e.eventType)?' · '+esc(e.eventType):''}</label><input type="number" min="1" class="seq-in" id="releseq_${i}_${e.lid}" value="${esc(((rel.relEvtSeq||{})[e.lid])||'')}" placeholder="seq" title="relatedEventSequence — ordem" oninput="syncObj()"></div>`).join('') : '<div class="empty">Sem eventos no modelo.</div>'}
       <div class="field-row" style="margin-top:6px">${fld('relatedEnvironmentPurpose','dd',`rel_ep_${i}`,(rel.relEnvPurpose||[]).join(', '),'ex.: render','0..n — separe por vírgula')}${vsel('relatedEnvironmentCharacteristic','dd',`rel_ec_${i}`,rel.relEnvChar||'',LOCVOC.environmentCharacteristic,'syncObj',false,'relatedEnvironmentCharacteristic')}</div>
     </div>`;
   });
@@ -1695,12 +1700,12 @@ function renderObjectForm(){
 
   // linkingEventIdentifier (DD 1.14, seleção)
   h += `<div class="block ${collapsed['o_le']!==false?'collapsed':''}">${blockHead('o_le','linkingEventIdentifier','0..n')}<div class="bb">`;
-  h += model.events.length ? model.events.map(e=>`<div class="chk"><input type="checkbox" id="le_${e.lid}" ${o.linkEvents.includes(e.lid)?'checked':''} onchange="syncObj()"><label style="font-weight:400;margin:0" for="le_${e.lid}">${e.lid} · ${esc(e.eventType||e.idValue)}</label></div>`).join('') : '<div class="empty">Nenhum evento no modelo. Crie eventos para vincular por seleção.</div>';
+  h += model.events.length ? model.events.map(e=>`<div class="chk"><input type="checkbox" id="le_${e.lid}" ${o.linkEvents.includes(e.lid)?'checked':''} onchange="syncObj()"><label style="font-weight:400;margin:0" for="le_${e.lid}">${_vEvt(e)}${has(e.eventType)?' · '+esc(e.eventType):''}</label></div>`).join('') : '<div class="empty">Nenhum evento no modelo. Crie eventos para vincular por seleção.</div>';
   h += `</div></div>`;
 
   // linkingRightsStatementIdentifier 0..n (seleção)
   h += `<div class="block ${collapsed['o_lr']!==false?'collapsed':''}">${blockHead('o_lr','linkingRightsStatementIdentifier','0..n')}<div class="bb">`;
-  h += model.rights.length ? model.rights.map(r=>`<div class="chk"><input type="checkbox" id="lr_${r.lid}" ${(o.linkRights||[]).includes(r.lid)?'checked':''} onchange="syncObj()"><label style="font-weight:400;margin:0" for="lr_${r.lid}">${r.lid} · ${esc(r.basis)} · ${esc(r.idValue)}</label></div>`).join('') : '<div class="empty">Nenhum rights no modelo. Crie na aba rights.</div>';
+  h += model.rights.length ? model.rights.map(r=>`<div class="chk"><input type="checkbox" id="lr_${r.lid}" ${(o.linkRights||[]).includes(r.lid)?'checked':''} onchange="syncObj()"><label style="font-weight:400;margin:0" for="lr_${r.lid}">${_vRgt(r)}${has(r.basis)?' · '+esc(r.basis):''}</label></div>`).join('') : '<div class="empty">Nenhum rights no modelo. Crie na aba rights.</div>';
   h += `</div></div>`;
 
   h += `<div class="btn-row"><button class="btn" id="btnAddObj">${editing.object?'salvar alterações':'adicionar object ao modelo'}</button><button class="btn ghost" id="btnResetObj">${editing.object?'cancelar edição':'limpar'}</button></div>`;
@@ -1789,7 +1794,7 @@ function renderEventForm(){
   if(model.agents.length){
     e.linkAgents.forEach((la,i)=>{
       h += `<div class="rep-item"><div class="rh"><span>vínculo ${i+1}</span><button class="rm-x" onclick="rmEvt('linkAgents',${i})">×</button></div>
-        <div class="field"><label>agente</label><select id="ev_la_${i}" onchange="syncEvt()">${model.agents.map(a=>`<option value="${a.lid}" ${la.agentLid===a.lid?'selected':''}>${a.lid} · ${esc(a.identifiers[0]?a.identifiers[0].value:'')}</option>`).join('')}</select></div>
+        <div class="field"><label>agente</label><select id="ev_la_${i}" onchange="syncEvt()">${model.agents.map(a=>`<option value="${a.lid}" ${la.agentLid===a.lid?'selected':''}>${_vAgt(a)}${a.names&&a.names[0]&&has(a.names[0].value)?' · '+esc(a.names[0].value):''}</option>`).join('')}</select></div>
         ${vsel('linkingAgentRole','dd',`ev_lar_${i}`,la.role,LOCVOC.eventRelatedAgentRole,'syncEvt',false,'linkingAgentRole')}</div>`;
     });
     h += `<button class="add-btn" onclick="addEvt('linkAgents')">+ vincular agente</button>`;
@@ -1800,7 +1805,7 @@ function renderEventForm(){
   if(model.objects.length){
     e.linkObjects.forEach((lo,i)=>{
       h += `<div class="rep-item"><div class="rh"><span>vínculo ${i+1}</span><button class="rm-x" onclick="rmEvt('linkObjects',${i})">×</button></div>
-        <div class="field"><label>objeto</label><select id="ev_lo_${i}" onchange="syncEvt()">${model.objects.map(o=>`<option value="${o.lid}" ${lo.objectLid===o.lid?'selected':''}>${o.lid} · ${esc(o.originalName||(o.identifiers[0]?o.identifiers[0].value:''))}</option>`).join('')}</select></div>
+        <div class="field"><label>objeto</label><select id="ev_lo_${i}" onchange="syncEvt()">${model.objects.map(o=>`<option value="${o.lid}" ${lo.objectLid===o.lid?'selected':''}>${_vObj(o)}${has(o.originalName)?' · '+esc(o.originalName):''}</option>`).join('')}</select></div>
         ${vsel('linkingObjectRole','dd',`ev_lor_${i}`,lo.role,LOCVOC.eventRelatedObjectRole,'syncEvt',false,'linkingObjectRole')}</div>`;
     });
     h += `<button class="add-btn" onclick="addEvt('linkObjects')">+ vincular objeto</button>`;
@@ -1850,12 +1855,12 @@ function renderAgentForm(){
   h += `<div class="block ${collapsed['a_ext']!==false?'collapsed':''}">${blockHead('a_ext','agentExtension','0..n',false,'agentExtension')}<div class="bb">${extList('agentExtension','exts',a.exts,'agentExtension')}</div></div>`;
 
   h += `<div class="block ${collapsed['a_le']!==false?'collapsed':''}">${blockHead('a_le','linkingEventIdentifier','0..n')}<div class="bb">`;
-  h += model.events.length ? model.events.map(e=>`<div class="chk"><input type="checkbox" id="ag_le_${e.lid}" ${a.linkEvents.includes(e.lid)?'checked':''} onchange="syncAgt()"><label style="font-weight:400;margin:0" for="ag_le_${e.lid}">${e.lid} · ${esc(e.eventType||e.idValue)}</label></div>`).join('') : '<div class="empty">Nenhum evento no modelo.</div>';
+  h += model.events.length ? model.events.map(e=>`<div class="chk"><input type="checkbox" id="ag_le_${e.lid}" ${a.linkEvents.includes(e.lid)?'checked':''} onchange="syncAgt()"><label style="font-weight:400;margin:0" for="ag_le_${e.lid}">${_vEvt(e)}${has(e.eventType)?' · '+esc(e.eventType):''}</label></div>`).join('') : '<div class="empty">Nenhum evento no modelo.</div>';
   h += `</div></div>`;
 
   // linkingRightsStatementIdentifier (DD 3.8, seleção)
   h += `<div class="block ${collapsed['a_lr']!==false?'collapsed':''}">${blockHead('a_lr','linkingRightsStatementIdentifier','0..n')}<div class="bb">`;
-  h += model.rights.length ? model.rights.map(r=>`<div class="chk"><input type="checkbox" id="ag_lr_${r.lid}" ${(a.linkRights||[]).includes(r.lid)?'checked':''} onchange="syncAgt()"><label style="font-weight:400;margin:0" for="ag_lr_${r.lid}">${r.lid} · ${esc(r.basis)} · ${esc(r.idValue)}</label></div>`).join('') : '<div class="empty">Nenhum rights no modelo. Crie na aba rights.</div>';
+  h += model.rights.length ? model.rights.map(r=>`<div class="chk"><input type="checkbox" id="ag_lr_${r.lid}" ${(a.linkRights||[]).includes(r.lid)?'checked':''} onchange="syncAgt()"><label style="font-weight:400;margin:0" for="ag_lr_${r.lid}">${_vRgt(r)}${has(r.basis)?' · '+esc(r.basis):''}</label></div>`).join('') : '<div class="empty">Nenhum rights no modelo. Crie na aba rights.</div>';
   h += `</div></div>`;
 
   // linkingEnvironmentIdentifier (DD 3.9) — referência a um ambiente (IE de tipo environment); Type/Value/Role livres
@@ -1966,10 +1971,10 @@ function renderRightsForm(){
 
   // vínculos
   h += `<div class="block ${collapsed['r_lo']!==false?'collapsed':''}">${blockHead('r_lo','linkingObjectIdentifier','0..n')}<div class="bb">`;
-  h += model.objects.length ? model.objects.map(o=>`<div class="chk"><input type="checkbox" id="rg_lo_${o.lid}" ${(r.linkObjects||[]).includes(o.lid)?'checked':''} onchange="syncRgt()"><label style="font-weight:400;margin:0" for="rg_lo_${o.lid}">${o.lid} · ${esc(o.originalName||(o.identifiers[0]?o.identifiers[0].value:''))}</label></div>`).join('') : '<div class="empty">Nenhum objeto no modelo.</div>';
+  h += model.objects.length ? model.objects.map(o=>`<div class="chk"><input type="checkbox" id="rg_lo_${o.lid}" ${(r.linkObjects||[]).includes(o.lid)?'checked':''} onchange="syncRgt()"><label style="font-weight:400;margin:0" for="rg_lo_${o.lid}">${_vObj(o)}${has(o.originalName)?' · '+esc(o.originalName):''}</label></div>`).join('') : '<div class="empty">Nenhum objeto no modelo.</div>';
   h += `</div></div>`;
   h += `<div class="block ${collapsed['r_la']!==false?'collapsed':''}">${blockHead('r_la','linkingAgentIdentifier','0..n')}<div class="bb">`;
-  h += model.agents.length ? model.agents.map(a=>{const id=a.identifiers[0]||{};const nm=a.names&&a.names[0];return `<div class="chk"><input type="checkbox" id="rg_la_${a.lid}" ${(r.linkAgents||[]).includes(a.lid)?'checked':''} onchange="syncRgt()"><label style="font-weight:400;margin:0" for="rg_la_${a.lid}">${a.lid} · ${esc((nm&&nm.value)||id.value)}</label></div>`;}).join('') : '<div class="empty">Nenhum agente no modelo.</div>';
+  h += model.agents.length ? model.agents.map(a=>{const nm=a.names&&a.names[0];return `<div class="chk"><input type="checkbox" id="rg_la_${a.lid}" ${(r.linkAgents||[]).includes(a.lid)?'checked':''} onchange="syncRgt()"><label style="font-weight:400;margin:0" for="rg_la_${a.lid}">${_vAgt(a)}${nm&&has(nm.value)?' · '+esc(nm.value):''}</label></div>`;}).join('') : '<div class="empty">Nenhum agente no modelo.</div>';
   h += `</div></div>`;
 
   h += `<div class="block ${collapsed['r_ext']!==false?'collapsed':''}">${blockHead('r_ext','rightsExtension','0..n',false,'rightsExtension')}<div class="bb">${extList('rightsExtension','exts',r.exts,'rightsExtension')}</div></div>`;
