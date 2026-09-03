@@ -141,8 +141,8 @@
   .tlabel{line-height:1.7}
   .tlabel .ctitle{font-weight:600}
   .tlabel .tico{font-size:11px;opacity:.85;margin-right:1px}
-  .tlabel .tbtn-ed{cursor:pointer;color:var(--amber);border:none;background:none;font:700 10px var(--mono);text-transform:lowercase;margin-left:6px;padding:0}
-  .tlabel .tbtn-ed:hover{text-decoration:underline}
+  .tlabel .tbtn-ed{cursor:pointer;color:var(--amber);border:none;background:none;font-size:13px;line-height:1;margin-left:7px;padding:0}
+  .tlabel .tbtn-ed:hover{opacity:.65}
   .tlabel .tbtn-x{cursor:pointer;color:var(--bad);border:none;background:none;font-weight:700;font-size:13px;line-height:1;margin-left:4px;padding:0}
   .tcar{cursor:pointer;display:inline-block;width:13px;text-align:center;color:var(--ink-soft);user-select:none;font-size:9px;transition:transform .12s}
   .tnode.collapsed>.tlabel>.tcar{transform:rotate(-90deg)}
@@ -2079,7 +2079,7 @@ function renderModel(){
   const used={events:new Set(),agents:new Set(),rights:new Set()};
   const findObj=lid=>model.objects.find(o=>o.lid===lid);
   const findAg=lid=>model.agents.find(a=>a.lid===lid);
-  const btns=(coll,lid)=>` <button class="tbtn-ed" onclick="editEnt('${coll}','${lid}')">editar</button><button class="tbtn-ed" onclick="copyEnt('${coll}','${lid}')">copiar</button><button class="tbtn-x" title="remover" onclick="removeEnt('${coll}','${lid}')">×</button>`;
+  const btns=(coll,lid)=>` <button class="tbtn-ed" title="editar" aria-label="editar" onclick="editEnt('${coll}','${lid}')">✎</button><button class="tbtn-ed" title="copiar" aria-label="copiar" onclick="copyEnt('${coll}','${lid}')">⧉</button><button class="tbtn-x" title="remover" aria-label="remover" onclick="removeEnt('${coll}','${lid}')">×</button>`;
   const collId=id=>treeCollapsed.has(id)?' collapsed':'';
   const wrap=(id,inner,kids)=>{ const k=!!kids;
     const car=k?`<span class="tcar" onclick="toggleTree('${id}',this)">▾</span>`:`<span class="tcar-sp"></span>`;
@@ -2106,7 +2106,7 @@ function renderModel(){
     regs.forEach(rg=>{ if(has(rg.name)||has(rg.key)) kids+=leaf(`<span class="tico">🗂</span><span class="ctitle">registro: ${esc(rg.name||'')}</span>${has(rg.key)?` <span class="tedge">${esc(rg.key)}</span>`:''}${has(rg.role)?` <span class="tedge">${esc(rg.role)}</span>`:''}`); });
     if(exts.length) kids+=leaf(`<span class="tico">🧩</span><span class="ctitle">extensão de environment</span> <span class="tedge">${exts.length}</span>`);
     if(!kids) return '';
-    return wrap(o.lid+'::env',`<span class="tico">🖥</span><span class="ctitle">environment</span><button class="tbtn-ed" onclick="editEnt('objects','${o.lid}')">editar</button>`,kids); };
+    return wrap(o.lid+'::env',`<span class="tico">🖥</span><span class="ctitle">environment</span><button class="tbtn-ed" title="editar" aria-label="editar" onclick="editEnt('objects','${o.lid}')">✎</button>`,kids); };
   const eventsOf=o=>model.events.filter(e=>(o.linkEvents||[]).includes(e.lid)||(e.linkObjects||[]).some(lo=>lo.objectLid===o.lid))
     .sort((a,b)=>String(a.dateTime||'~').localeCompare(String(b.dateTime||'~')));
   const rightsOf=o=>model.rights.filter(r=>(o.linkRights||[]).includes(r.lid)||(r.linkObjects||[]).includes(o.lid));
