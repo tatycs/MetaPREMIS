@@ -2026,7 +2026,7 @@ function renderForm(){
 function buildStructuralEdges(){
   const childrenOf=new Map(); const isChild=new Set();
   const exists=lid=>model.objects.some(o=>o.lid===lid);
-  const add=(p,c,sub,seq)=>{ if(p===c||!exists(p)||!exists(c)) return; if(!childrenOf.has(p))childrenOf.set(p,[]); if(!childrenOf.get(p).some(e=>e.lid===c)) childrenOf.get(p).push({lid:c,subType:sub,seq:seq}); isChild.add(c); };
+  const add=(p,c,sub,seq)=>{ if(p===c||!exists(p)||!exists(c)) return; if(!childrenOf.has(p))childrenOf.set(p,[]); const arr=childrenOf.get(p); const ex=arr.find(e=>e.lid===c); if(ex){ if(!has(ex.seq)&&has(seq)){ ex.seq=seq; ex.subType=ex.subType||sub; } } else arr.push({lid:c,subType:sub,seq:seq}); isChild.add(c); };
   model.objects.forEach(o=>{
     (o.relationships||[]).forEach(rel=>{
       if(!/structural/i.test(rel.type||'')) return;
