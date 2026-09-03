@@ -2135,6 +2135,30 @@ function renderModel(){
   let orph=''; oe.forEach(e=>orph+=eventNode(e)); or.forEach(r=>orph+=rightNode(r));
   const oa=model.agents.filter(a=>!used.agents.has(a.lid)); oa.forEach(a=>orph+=agentNode(a.lid,''));
   if(oe.length||or.length||oa.length) html+=`<div class="model-group"><div class="gh"><span>sem vínculo na árvore</span><span>${oe.length+or.length+oa.length}</span></div><div class="tree">${orph}</div></div>`;
+  /* vínculos órfãos: apontam para entidades que não estão no modelo (alvo removido) — agrupados por entidade que os contém */
+  const exE=new Set(model.events.map(e=>e.lid)), exO=new Set(model.objects.map(o=>o.lid)), exA=new Set(model.agents.map(a=>a.lid)), exR=new Set(model.rights.map(r=>r.lid));
+  const brk=[]; const pushBrk=(coll,lid,label,p)=>{ if(p.length) brk.push({coll,lid,label,txt:p.join(', ')}); };
+  model.objects.forEach(o=>{ const p=[]; let n;
+    n=(o.linkEvents||[]).filter(x=>!exE.has(x)).length; if(n)p.push(n+' evento(s)');
+    n=(o.linkRights||[]).filter(x=>!exR.has(x)).length; if(n)p.push(n+' direito(s)');
+    let ro=0,re=0; (o.relationships||[]).forEach(rel=>{ ro+=(rel.relObjects||[]).filter(x=>!exO.has(x)).length; re+=(rel.relEvents||[]).filter(x=>!exE.has(x)).length; }); if(ro)p.push(ro+' objeto(s) rel.'); if(re)p.push(re+' evento(s) rel.');
+    pushBrk('objects',o.lid,_vObj(o),p); });
+  model.events.forEach(e=>{ const p=[]; let n;
+    n=(e.linkAgents||[]).filter(l=>l&&!(l.agentLid&&exA.has(l.agentLid))&&!has(l.refValue)).length; if(n)p.push(n+' agente(s)');
+    n=(e.linkObjects||[]).filter(l=>l&&!(l.objectLid&&exO.has(l.objectLid))&&!has(l.refValue)).length; if(n)p.push(n+' objeto(s)');
+    pushBrk('events',e.lid,_vEvt(e),p); });
+  model.agents.forEach(a=>{ const p=[]; let n;
+    n=(a.linkEvents||[]).filter(x=>!exE.has(x)).length; if(n)p.push(n+' evento(s)');
+    n=(a.linkRights||[]).filter(x=>!exR.has(x)).length; if(n)p.push(n+' direito(s)');
+    pushBrk('agents',a.lid,_vAgt(a),p); });
+  model.rights.forEach(r=>{ const p=[]; let n;
+    n=(r.linkObjects||[]).filter(x=>!exO.has(x)).length; if(n)p.push(n+' objeto(s)');
+    n=(r.linkAgents||[]).filter(x=>!exA.has(x)).length; if(n)p.push(n+' agente(s)');
+    pushBrk('rights',r.lid,_vRgt(r),p); });
+  if(brk.length){
+    const items=brk.map(b=>leaf(`<span class="tico">⚠</span><span class="cid">${b.label}</span> <span class="tedge bad">vínculo(s) órfão(s): ${esc(b.txt)}</span><button class="tbtn-ed" title="editar (salvar limpa os vínculos órfãos)" aria-label="editar" onclick="editEnt('${b.coll}','${b.lid}')">✎</button>`)).join('');
+    html+=`<div class="model-group"><div class="gh"><span>vínculos órfãos — alvo removido</span><span>${brk.length}</span></div><div class="tree">${items}</div></div>`;
+  }
   host.innerHTML=html;
   if(typeof xmlSearchTerm!=='undefined' && xmlSearchTerm) highlightTree(xmlSearchTerm);
 }
@@ -3522,7 +3546,7 @@ function bind(){
   document.getElementById('btnState').onclick=()=>{if(currentEnt==='object')syncObj();else if(currentEnt==='event')syncEvt();else if(currentEnt==='rights')syncRgt();else syncAgt();download('metapremis-trabalho.json',JSON.stringify({model,lidCounter},null,2),'application/json');};
   document.getElementById('btnLoad').onclick=()=>document.getElementById('stateFile').click();
   document.getElementById('btnClear').onclick=()=>{ if(clearScreen(true)) toast('Tela limpa.'); };
-  document.getElementById('stateFile').onchange=ev=>{const f=ev.target.files[0];if(!f){return;}const filled=model.objects.length||model.events.length||model.agents.length||model.rights.length;if(filled&&!confirm('Abrir um trabalho substitui tudo que está na tela pelo arquivo. Continuar?')){ev.target.value='';return;}const r=new FileReader();r.onload=e=>{try{const data=JSON.parse(e.target.result);if(!data||!data.model)throw new Error('sem bloco "model" — não parece um arquivo de trabalho do MetaPREMIS');Object.assign(model,{objects:[],events:[],agents:[],rights:[],relationships:[]},data.model);lidCounter=data.lidCounter||1;editing.object=editing.event=editing.agent=editing.rights=null;objDraft=mk.object();evtDraft=mk.event();agtDraft=mk.agent();rgtDraft=null;const _pruned=pruneDanglingLinks();renderForm();renderModel();renderOutput();if(_pruned)toast(_pruned+' vínculo(s) órfão(s) removido(s) ao abrir o trabalho (apontavam para entidades já excluídas).');}catch(err){alert('Arquivo inválido: '+err.message);}finally{ev.target.value='';}};r.readAsText(f);};
+  document.getElementById('stateFile').onchange=ev=>{const f=ev.target.files[0];if(!f){return;}const filled=model.objects.length||model.events.length||model.agents.length||model.rights.length;if(filled&&!confirm('Abrir um trabalho substitui tudo que está na tela pelo arquivo. Continuar?')){ev.target.value='';return;}const r=new FileReader();r.onload=e=>{try{const data=JSON.parse(e.target.result);if(!data||!data.model)throw new Error('sem bloco "model" — não parece um arquivo de trabalho do MetaPREMIS');Object.assign(model,{objects:[],events:[],agents:[],rights:[],relationships:[]},data.model);lidCounter=data.lidCounter||1;editing.object=editing.event=editing.agent=editing.rights=null;objDraft=mk.object();evtDraft=mk.event();agtDraft=mk.agent();rgtDraft=null;renderForm();renderModel();renderOutput();}catch(err){alert('Arquivo inválido: '+err.message);}finally{ev.target.value='';}};r.readAsText(f);};
 }
 
 bind(); applyTheme(document.documentElement.getAttribute('data-theme')||'light'); renderSteps(); renderForm(); renderModel(); renderOutput(); restoreAutosave();
