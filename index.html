@@ -2086,8 +2086,9 @@ function renderModel(){
     return `<div class="tnode${k?collId(id):''}"${k?` data-tid="${id}"`:''}><div class="tlabel">${car}${inner}</div>${k?`<div class="tchildren">${kids}</div>`:''}</div>`; };
   const leaf=inner=>`<div class="tnode"><div class="tlabel"><span class="tcar-sp"></span>${inner}</div></div>`;
   const agentNode=(agLid,role)=>{ const a=findAg(agLid); if(!a) return ''; used.agents.add(agLid);
-    const nm=(a.names&&a.names[0]&&a.names[0].value)||(a.identifiers[0]||{}).value||'(sem nome)';
-    return leaf(`<span class="tico">👤</span><span class="ctitle">${esc(nm)}</span> <span class="src xsd">${esc(a.agentType||'agent')}</span>${role?` <span class="tedge">${esc(role)}</span>`:''}${btns('agents',agLid)}`); };
+    const idv=esc((a.identifiers&&a.identifiers[0]&&a.identifiers[0].value)||a.lid);
+    const nm=esc((a.names&&a.names[0]&&a.names[0].value)||'(sem nome)');
+    return leaf(`<span class="tico">👤</span><span class="cid">${idv}</span> <span class="ctitle">${nm}</span> <span class="src xsd">${esc(a.agentType||'agent')}</span>${role?` <span class="tedge">${esc(role)}</span>`:''}${btns('agents',agLid)}`); };
   const eventNode=e=>{ used.events.add(e.lid);
     const seen=new Set(); let ags='';
     (e.linkAgents||[]).forEach(la=>{ if(!la) return;
