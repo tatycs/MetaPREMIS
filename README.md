@@ -11,7 +11,11 @@ A validação tem **três camadas** (detalhe e fontes em [REGRAS-VALIDACAO.md](R
    rodando no próprio navegador via [`xmllint-wasm`](vendor/xmllint-wasm/) (libxml2 compilado
    para WebAssembly). Gata o download: documento que não valida no schema não é exportado.
 2. **Conformidade semântica** — Data Dictionary 3.0 + norma de conformidade (regras próprias).
-3. **Expectativa do Archivematica 1.18** — aplicada só no perfil Archivematica.
+3. **Aceitação pelo Archivematica 1.18** — aplicada só no perfil Archivematica. O `premis.xml`
+   sai **completo** (rights, IE e extensões incluídos); as regras que impedem a ingestão viram
+   erro (originalName em `objects/`, eventDateTime interpretável, todo evento com agente e
+   arquivo, `linkingObjectIdentifier` só para `file`). O que o Archivematica ignora
+   (rights — usados só via `rights.csv` —, IE, extensões) permanece no XML e vai para o AIP.
 
 ## Rodar localmente
 

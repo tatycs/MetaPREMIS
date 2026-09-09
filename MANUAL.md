@@ -144,10 +144,25 @@ passo extra de confirmação).
 
 ## 4. Modelo interno
 
-O painel **Modelo** mostra o que já existe, em **cards** por entidade. Cada card tem
-**editar** (recarrega a entidade no formulário, mantendo o identificador). Relações
-estruturais entre objects (is part of / includes, etc.) são refletidas na organização
-hierárquica.
+O painel **Modelo** mostra tudo em uma **árvore hierárquica**: objetos com seus eventos
+(em ordem cronológica), direitos, agentes e environment aninhados sob o objeto vinculado.
+As relações estruturais entre objects (*is part of* / *includes*, etc.) montam a hierarquia,
+e a ordem dos filhos respeita o **`relatedObjectSequence`**.
+
+- Cada nó exibe o **valor do identificador colocado por você** (`objectIdentifierValue`,
+  `agentIdentifierValue`, etc.) **antes** do nome — nunca o código interno do programa.
+- Botões por nó (ícones): **✎ editar** (recarrega no formulário, mantendo o identificador),
+  **⧉ copiar** (leva os metadados ao formulário como uma nova entidade) e **× remover**.
+- **▾ expandir / ▸ contrair** recolhem a árvore; o estado de cada nó é lembrado.
+- As **listas de seleção** dos formulários (vincular evento, agente, objeto, direito) vêm em
+  **ordem alfabética** (natural) e também mostram o valor do identificador.
+- **sem vínculo na árvore** — entidades que existem mas não estão presas a nenhum objeto.
+- **vínculos órfãos — alvo removido** — vínculos que apontam para entidades já excluídas.
+  Cada entrada tem **✎** (abrir para editar) e **×** (remover só os vínculos órfãos daquela
+  entidade). Aparecem pelo **valor** que o vínculo tinha, não por código interno.
+
+As três divisórias entre **Origem · Modelo · Saída** podem ser **arrastadas** para redimensionar
+os painéis.
 
 Importar um documento (XML ou CSV completo) **substitui** o conteúdo atual do modelo (com
 confirmação).
@@ -165,13 +180,29 @@ O painel **Saída** mostra o `premis.xml` gerado e valida em **três camadas**:
   [`REGRAS-VALIDACAO.md`](REGRAS-VALIDACAO.md).)
 
 **Perfis de saída:**
-- **PREMIS 3.0 completo** — o documento inteiro, rights inclusos.
-- **Archivematica** — `premis.xml` de importação; **omite os rights do XML** (o Archivematica
-  ingere direitos por um `rights.csv` à parte) e ajusta o que o Archivematica espera.
+- **PREMIS 3.0 completo** — o documento inteiro, com tudo (rights, IE, extensões).
+- **Archivematica** — o mesmo `premis.xml` **completo** (nada é omitido — rights, IE e
+  representation continuam no XML), mas a validação passa a **cobrar as regras que fazem o
+  Archivematica aceitar sem erro** (ver abaixo). O objetivo é um PREMIS completo, que vá
+  íntegro para o AIP, e que o Archivematica ingira sem falha — mesmo que ele só aproveite
+  objetos `file`, eventos e agentes (e ignore rights/IE, o que é inofensivo).
+
+> Regra de ouro: a **camada 1** usa o **mesmo `premis-v3-0.xsd`** que o Archivematica.
+> Se o documento passa na *verificar integridade*, passa na validação de schema do Archivematica.
+> As regras específicas do perfil Archivematica (originalName em `objects/`, eventDateTime
+> interpretável, todo evento com agente e arquivo, `linkingObjectIdentifier` só para `file`,
+> etc.) estão detalhadas em [`REGRAS-VALIDACAO.md`](REGRAS-VALIDACAO.md) e viram **erro**
+> quando impedem a ingestão. Extensões (`xs:any`) **não** precisam de URL/esquema: são aceitas
+> (`##any`/`lax`) e ignoradas.
+
+**Editar o XML e buscar:** no topo da Saída há uma caixa **buscar no XML e na árvore** (realça
+as ocorrências no código e nos nós da árvore, com ‹ › e contador) e o botão **editar XML**, que
+permite alterar o código à mão e **aplicar ao modelo** (reinterpreta e substitui a árvore/formulários).
 
 **Fluxo:** clique em **verificar integridade** (roda camada 1 + 2–3 de uma vez). Se estiver
 tudo conforme, o **baixar .xml** é liberado. O download só acontece com o documento
-validado e **atual** (se você mexer no modelo, revalide).
+validado e **atual** (se você mexer no modelo, revalide). Mensagens de erro sempre indicam a
+entidade pelo **valor do identificador** (não por código interno).
 
 ---
 
@@ -189,8 +220,16 @@ exemplos). Você escolhe ler em **inglês** (texto oficial do LoC) ou **portugu�
 
 ## 7. Salvar e retomar o trabalho
 
-- **salvar trabalho** — baixa um `metapremis-trabalho.json` com todo o modelo. Guarde-o.
-- **carregar trabalho** — restaura o modelo a partir desse JSON.
+- **Autosave.** O trabalho é salvo automaticamente no **navegador** (a cada mudança e ao
+  sair/atualizar a página), incluindo o **formulário em edição**. Ao voltar, o modelo é
+  **recuperado sozinho**, com um aviso no topo do painel Modelo (com **×** para fechar o aviso
+  e **descartar e limpar** para recomeçar). Fica por navegador/máquina; nada vai a servidor.
+- **limpar tela** — esvazia o modelo e o rascunho salvo, para começar do zero.
+- **salvar trabalho** — baixa um `metapremis-trabalho.json` com todo o modelo. Os **vínculos
+  são gravados pelo valor do identificador** (type+value), como no XML, então sobrevivem entre
+  sessões mesmo que os códigos internos mudem.
+- **abrir trabalho** — restaura o modelo a partir desse JSON (pergunta antes de substituir a
+  tela). Vínculos cujo alvo não existe mais são avisados pelo **valor real** (não reconectados).
 
 É a forma de pausar e continuar depois sem perder nada (lembre: nada fica em servidor algum).
 
@@ -219,8 +258,12 @@ exemplos). Você escolhe ler em **inglês** (texto oficial do LoC) ou **portugu�
   **Chrome ou Edge**. Nesses outros navegadores, use a importação de arquivos ou de relatórios.
 - **`keyInformation` e outros `xs:any`.** Pontos de extensão de schema externo não são
   importados (são avisados), como no import de `premis.xml`.
-- **Vínculos para fora do documento.** Um `related*`/`linking*` cujo identificador não tem
-  entidade correspondente é omitido e listado no aviso.
+- **Vínculos para fora do documento / alvo removido.** Um `related*`/`linking*` cujo alvo não
+  existe é sinalizado como **órfão** — listado no grupo **vínculos órfãos** da árvore (com ×
+  para remover) e nas mensagens de validação, sempre pelo **valor** do identificador.
+- **Direitos no perfil Archivematica.** Os `<premis:rights>` **permanecem** no `premis.xml`
+  completo (e vão para o AIP), mas o Archivematica só **aproveita** direitos enviados em
+  `rights.csv` — ele ignora os rights do XML na ingestão (inofensivo). Ver `REGRAS-VALIDACAO.md`.
 
 ---
 

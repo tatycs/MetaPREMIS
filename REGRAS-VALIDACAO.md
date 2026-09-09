@@ -53,31 +53,59 @@ Um conjunto conformante neste nível tem: todos os elementos mandatórios do Obj
 um ou mais agentes; e Event suficiente para documentar as ações. [AVISO informativo]
 Fonte: PREMIS conformance / NDIIPP 2014. https://www.loc.gov/standards/premis/premis-conformance-oct2010.pdf
 
-## Camada 3 — Expectativa do Archivematica (release 1.18)
+## Camada 3 — Aceitação pelo Archivematica (release 1.18)
 
-Aplicada apenas no perfil Archivematica.
+Aplicada apenas no perfil **Archivematica**. Objetivo: o `premis.xml` vai **completo** (nada é
+omitido pelo MetaPREMIS) e mesmo assim é **aceito sem erro** na ingestão. As regras que
+**impedem** a ingestão viram **erro**; o que o Archivematica apenas ignora vira **aviso/nota**.
 
-R3.1 — Cada Event deve vincular-se a um Agent.
-"Each Event should be linked to one Agent." Mais estrito que o XSD (onde é opcional).
-[BLOQUEIA no perfil Archivematica]
-Fonte: Archivematica 1.18 — Import metadata. https://www.archivematica.org/en/docs/archivematica-1.18/user-manual/transfer/import-metadata/
+Fonte de comportamento (verificada no código): `artefactual/archivematica` v1.18.0,
+`src/archivematica/MCPClient/clientScripts/load_premis_events_from_xml.py` (o caminho
+`metadata/premis.xml`: valida contra o `premis.xsd` via `assertValid` e carrega
+`object[@xsi:type="file"]`, `event` e `agent`). Fonte de norma (PDF): premis-v3-0.xsd.
 
-R3.2 — eventDateTime em ISO 8601.
-"premis:eventDateTime value should be in ISO 8601 format." O XSD aceita qualquer string.
-[BLOQUEIA no perfil Archivematica]
-Fonte: Archivematica 1.18 — Import metadata.
+R3.1 — **Todo evento precisa de ao menos um agente.** [ERRO]
+Sem agente, `get_valid_events` descarta o evento e a ingestão falha. Conta o vínculo nos dois
+sentidos (evento→agente e agente→evento).
 
-R3.3 — originalName aponta para objects/.
-O originalName vincula o objeto ao arquivo físico em objects/. [AVISO no perfil Archivematica]
-Fonte: Archivematica 1.18 — Import metadata.
+R3.2 — **Todo evento precisa de ao menos um arquivo (`object file`).** [ERRO]
+Sem arquivo, o evento é descartado (idem). Vale só objeto `file`; vínculo ao IE não conta.
 
-R3.4 — Cada premis.xml com ao menos um object, event e agent; identificadores locais.
-[AVISO informativo]
-Fonte: Archivematica 1.18 — Import metadata.
+R3.3 — **`eventDateTime` interpretável pelo parser do Archivematica.** [ERRO]
+Não é "ISO 8601 estrito": o AM usa o parser do Django (`parse_datetime` + `parse_date`), que
+aceita **data só** (`AAAA-MM-DD`) e **data-hora** (`AAAA-MM-DDThh:mm[:ss][±hh:mm|Z]`) — segundos
+e fuso **opcionais**. O que ele não consegue interpretar faz a ingestão falhar.
 
-R3.5 — Rights não entram no premis.xml de importação.
-Direitos entram por rights.csv ou pela interface. [INFORMATIVO; rights omitidos do XML]
-Fonte: Archivematica 1.18 — Import metadata / PREMIS metadata.
+R3.4 — **`originalName` deve começar com `objects/`.** [ERRO]
+Se não casa com o arquivo do transfer, o objeto é descartado e a ingestão falha (cascateia
+para R3.1/R3.2). (Antes era só aviso.)
+
+R3.5 — **`linkingObjectIdentifier` de evento só pode apontar para `object file`.** [ERRO]
+O AM só coleta objetos `file`; um vínculo de evento ao **IE/representation** é tratado como
+referência a **objeto inexistente** (`print_events_related_to_nonexistent_files`) e a ingestão
+falha. Nos eventos, vincule apenas a arquivos.
+
+R3.6 — **Extensões (`xs:any`) são aceitas — não precisam de URL/esquema.** [NOTA]
+O único ponto de extensão do `premis.xsd` é `<xs:any namespace="##any" processContents="lax">`
+(extensionComplexType), então qualquer conteúdo de extensão, **com ou sem URI**, passa e é
+ignorado. Erro de extensão só ocorre ao validar contra um XSD-invólucro que importe o esquema
+da extensão — valide contra o `premis.xsd` puro.
+
+R3.7 — **Rights: mantidos no `premis.xml`, mas o Archivematica só usa via CSV.** [NOTA]
+O MetaPREMIS **não omite** os `<premis:rights>` — eles ficam no XML completo e vão para o AIP.
+Porém o Archivematica **ignora** os rights do `premis.xml` na ingestão; ele só **aproveita**
+direitos quando enviados em **`rights.csv`** (ou pela interface). Ignorar aqui é inofensivo.
+
+R3.8 — **Objetos IE/representation: mantidos no XML, ignorados na ingestão.** [NOTA]
+O carregador lê só `object[@xsi:type="file"]`; IE e representation permanecem no `premis.xml`
+completo (bom para o AIP), mas não são importados. (Não vincule eventos a eles — ver R3.5.)
+
+R3.9 — **Regra de ouro (camada 1 = XSD do Archivematica).** [NOTA]
+A camada 1 usa o mesmo `premis-v3-0.xsd`. Se o documento passa na *verificar integridade*, passa
+na validação de schema do Archivematica.
+
+Fonte (docs): Archivematica 1.18 — Import metadata.
+https://www.archivematica.org/en/docs/archivematica-1.18/user-manual/transfer/import-metadata/
 
 ## Vocabulário de eventType — regra específica (código × rótulo + @authority)
 
